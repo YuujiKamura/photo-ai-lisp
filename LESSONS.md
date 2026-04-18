@@ -44,3 +44,40 @@ The direction, not a commitment:
 - Skills stay as-is under `~/.agents/skills/photo-*/`. The Lisp side only invokes them after probing their real CLI shape.
 
 This file exists so the next pass does not repeat today.
+
+## 2026-04-18 night — the Phase 5 "267 -> 49 checks" regression
+
+During Phase 5 wrap-up the suite silently dropped from 267 checks to
+49. `SGR-TESTS` and `SCREEN-SCENARIO` never registered and
+`SCREEN-TESTS` stopped after the third `(test ...)`. No warnings,
+no errors, exit 0. The earlier handover hypothesized FASL staleness
+and `tests/package.lisp` forward-decls. Both were wrong.
+
+**Root cause.** `~/quicklisp/local-projects/` contained three sibling
+directories (`Cu8rnsaC/`, `photo-ai-lisp/`, `photo-ai-lisp-track-b/`)
+that were orphan `cp -r` snapshots of the worktree. All three held a
+`photo-ai-lisp.asd` with out-of-date `:components` (missing `sgr`,
+`screen-events`, `screen-html`, `screen-scenario`, `sgr-tests`). ASDF
+resolved the system from whichever `.asd` came first in
+`system-index.txt` — `Cu8rnsaC` — so the live worktree's real `.asd`
+was shadowed. Only the files that happened to exist in that snapshot
+compiled, and only the first 3 deftests survived because the
+snapshot's `screen-tests.lisp` was a smaller older copy of the file.
+
+**Fix (permanent).**
+
+1. Renamed the three orphan `.asd` files to
+   `photo-ai-lisp.asd.stale-orphan-20260418` so ASDF can no longer
+   discover them.
+2. Added `(pushnew #P"C:/Users/yuuji/photo-ai-lisp-track-b/"
+   asdf:*central-registry* :test #'equal)` to `~/.sbclrc` so the live
+   worktree is the canonical location.
+3. Verified `(asdf:test-system :photo-ai-lisp/tests)` now runs 267
+   checks, 0 fail, including `SCREEN-SCENARIO-HELLO-WORLD-VIA-PARSER`.
+
+**Takeaway.** "Stale FASL" and "broken loader" are last-resort
+hypotheses. When the symptom is "some tests silently missing", first
+confirm which `.asd` ASDF is actually loading — a `(asdf:system-source-file
+:foo)` probe or a `trace asdf:load-asd` surfaces the real path in one
+call. Duplicate `.asd` files under ASDF search roots shadow silently,
+with no warning.

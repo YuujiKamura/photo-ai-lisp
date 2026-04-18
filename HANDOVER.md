@@ -2,13 +2,31 @@
 
 Read this first, then `LESSONS.md`. Previous handover is in git history.
 
-## TL;DR
+## TL;DR (updated 2026-04-18 22:00 — regression fixed)
 
 Phase 5 (screen + html + handlers) is **12/12 atoms landed** on
-`track-b/ansi-parser` (HEAD: `8dd9318`). But there is a **test loader
-regression** that makes `(asdf:test-system :photo-ai-lisp/tests)` only
-exercise 49 of ~270 expected checks. SCREEN-SCENARIO and SGR-TESTS
-suites never register. Fix that first, then merge to `main`.
+`track-b/ansi-parser`. The test loader regression that silently
+dropped the suite to 49 of ~270 checks has been fixed: root cause
+was three orphan `cp -r` snapshots under
+`~/quicklisp/local-projects/` whose stale `photo-ai-lisp.asd` files
+shadowed the live worktree. See `LESSONS.md` §"Phase 5 267→49
+regression" for full diagnosis.
+
+Current canonical verification:
+
+```bash
+cd ~/photo-ai-lisp-track-b
+'/c/Users/yuuji/SBCLLocal/PFiles/Steel Bank Common Lisp/sbcl.exe' \
+  --non-interactive \
+  --eval "(require 'asdf)" \
+  --eval "(asdf:test-system :photo-ai-lisp/tests)"
+```
+
+Expected and observed: **267 checks, 0 fail**, including
+`SCREEN-SCENARIO-HELLO-WORLD-VIA-PARSER`.
+
+The remainder of this document describes the original Phase 5 state
+for historical context and lists the hygiene tasks that are now done.
 
 ## What landed in Phase 5
 

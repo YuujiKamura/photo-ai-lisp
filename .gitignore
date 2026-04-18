@@ -1,6 +1,8 @@
 *.fasl
 *.lisp-tmp
 *.lisp.bak
+*-test.log
+/html
 .DS_Store
 Thumbs.db
 .vscode/
