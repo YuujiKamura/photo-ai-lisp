@@ -34,4 +34,17 @@ Navigate to `/scan`, enter a directory path containing JPEG photos, and click Sc
 
 Navigate to `/pipeline`, enter a photo directory, and click Run. Steps: `photo-scan` (EXIF manifest), `photo-scope-infer` (contact sheet JPEG), `photo-match-master` (master CSV matching), Rust export (PDF+Excel). Status polls `/pipeline/status` every 2s. Artifacts land in `<dir>/photo-ai-output/`.
 
+## Testing
+
+Load the test system and run:
+
+    (ql:quickload :photo-ai-lisp/tests)
+    (asdf:test-system :photo-ai-lisp)
+
+Or call directly:
+
+    (photo-ai-lisp/tests:run-tests)
+
+Integration tests (real subprocess / skills) are tagged :integration and excluded from the default suite.
+
 The code is released under the MIT License. Current status: WIP skeleton.

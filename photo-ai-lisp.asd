@@ -12,3 +12,18 @@
                              (:file "pipeline")
                              (:file "views")
                              (:file "main")))))
+
+(defsystem "photo-ai-lisp/tests"
+  :depends-on ("photo-ai-lisp" "fiveam")
+  :components ((:module "tests"
+                :serial t
+                :components ((:file "package")
+                             (:file "main")
+                             (:file "models-tests")
+                             (:file "storage-tests")
+                             (:file "views-tests")
+                             (:file "skills-tests")
+                             (:file "pipeline-tests")
+                             (:file "main-tests"))))
+  :perform (test-op (o c)
+             (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))
