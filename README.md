@@ -30,4 +30,8 @@ Skills under `~/.agents/skills/` are invoked via `(run-skill "photo-scan" dir)`.
 
 Navigate to `/scan`, enter a directory path containing JPEG photos, and click Scan. The `photo-scan` skill (Python) walks the directory, extracts EXIF dates, and returns a JSON manifest. Results appear at `/manifest` as a browsable table.
 
+## Full pipeline
+
+Navigate to `/pipeline`, enter a photo directory, and click Run. Steps: `photo-scan` (EXIF manifest), `photo-scope-infer` (contact sheet JPEG), `photo-match-master` (master CSV matching), Rust export (PDF+Excel). Status polls `/pipeline/status` every 2s. Artifacts land in `<dir>/photo-ai-output/`.
+
 The code is released under the MIT License. Current status: WIP skeleton.

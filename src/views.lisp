@@ -7,6 +7,6 @@
       (:body
        (:header :style "margin-bottom: 1rem"
         (:h1 "photo-ai-lisp")
-        (:p (:a :href "/" "Home") " | " (:a :href "/upload" "Upload") " | " (:a :href "/scan" "Scan") " | " (:a :href "/manifest" "Manifest")))
+        (:p (:a :href "/" "Home") " | " (:a :href "/upload" "Upload") " | " (:a :href "/scan" "Scan") " | " (:a :href "/manifest" "Manifest") " | " (:a :href "/pipeline" "Pipeline")))
        ,@body
        (:footer :style "margin-top: 1rem" (:small "Viaweb-style live edit prototype"))))))

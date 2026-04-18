@@ -65,6 +65,37 @@
       (:select :name "category" (render-category-options (photo-category photo))))
      (:p (:input :type "submit" :value "Update")))))
 
+(defun pipeline-page ()
+  (layout "Pipeline"
+    (:h2 "Full pipeline")
+    (:form :action "/pipeline/run" :method "POST"
+     (:p "Photo directory" (:br) (:input :type "text" :name "dir" :size "60"))
+     (:p (:input :type "submit" :value "Run pipeline")))
+    (:div :id "status" (:p "No pipeline run yet."))
+    (:script
+     (str "var poll=setInterval(function(){fetch('/pipeline/status').then(r=>r.json()).then(function(steps){var h='<table border=1 cellpadding=4><tr><th>Step</th><th>Status</th><th>Info</th></tr>';steps.forEach(function(s){h+='<tr><td>'+s.name+'</td><td>'+s.status+'</td><td>'+(s.artifact||s.error||'')+'</td></tr>';});h+='</table>';document.getElementById('status').innerHTML=h;if(steps.every(function(s){return s.status==='done'||s.status==='failed';}))clearInterval(poll);});},2000);"))))
+
+(defun pipeline-status ()
+  (setf (content-type*) "application/json")
+  (with-output-to-string (s)
+    (yason:encode
+     (mapcar (lambda (step)
+               (let ((h (make-hash-table :test 'equal)))
+                 (setf (gethash "name"     h) (getf step :name)
+                       (gethash "status"   h) (string-downcase (symbol-name (getf step :status)))
+                       (gethash "artifact" h) (or (getf step :artifact) "")
+                       (gethash "error"    h) (or (getf step :error) ""))
+                 h))
+             (or *pipeline-state* '()))
+     s)))
+
+(defun pipeline-run-dispatch ()
+  (if (eq (request-method*) :POST)
+      (let ((dir (post-parameter "dir")))
+        (run-pipeline dir)
+        (redirect "/pipeline"))
+      (progn (setf (return-code*) 405) "Method Not Allowed")))
+
 (defun scan-page ()
   (layout "Scan"
     (:h2 "Scan photo directory")
@@ -133,7 +164,10 @@
     (load-photos)
     (setf *acceptor* (make-instance 'easy-acceptor :port port))
     (setf (dispatch-table *acceptor*)
-          (list (create-prefix-dispatcher "/manifest" #'manifest-page)
+          (list (create-prefix-dispatcher "/pipeline/run" #'pipeline-run-dispatch)
+                (create-prefix-dispatcher "/pipeline/status" #'pipeline-status)
+                (create-prefix-dispatcher "/pipeline" #'pipeline-page)
+                (create-prefix-dispatcher "/manifest" #'manifest-page)
                 (create-prefix-dispatcher "/scan" #'scan-dispatch)
                 (create-prefix-dispatcher "/photo/" #'photo-dispatch)
                 (create-prefix-dispatcher "/upload" #'upload-dispatch)
