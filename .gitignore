@@ -7,3 +7,10 @@ Thumbs.db
 .idea/
 
 .omc/
+.dispatch/
+demo/xlsx-probe-out.xlsx
+demo/shell-console.log
+demo/term-console.log
+demo/shell-dom.txt
+demo/term-dom.txt
+.claude/

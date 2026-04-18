@@ -7,7 +7,7 @@ Usage:
 Writes `demo/xlsx-probe-out.xlsx`. Exit 0 if every original JPEG's
 sha256 appears verbatim in `xl/media/` of the saved workbook, else 1.
 
-Context: issue #16 (case-container format). Verifying the hypothesis
+Context: issue #18 (case-container format). Verifying the hypothesis
 that a single `.xlsx` per case can hold originals losslessly.
 """
 
