@@ -8,7 +8,7 @@ This repository is also a practical learning project for studying ideas from On 
 
 ## Local Development
 
-Install SBCL and Quicklisp first. On Windows, `choco install sbcl` is the simplest native path; for a smoother Lisp workflow, WSL is also a reasonable option. Quicklisp setup instructions are available at <https://www.quicklisp.org/beta/>.
+Install SBCL and Quicklisp first. On Windows, `choco install sbcl` is the simplest native path; for a smoother Lisp workflow, WSL is also a reasonable option. On macOS, `brew install sbcl` works. Then download the Quicklisp installer: `curl -O https://beta.quicklisp.org/quicklisp.lisp`, start SBCL with `sbcl --load quicklisp.lisp`, then run `(quicklisp-quickstart:install)` and `(ql:add-to-init-file)`.
 
 Make the project visible to Quicklisp by cloning or symlinking this repository into `~/quicklisp/local-projects/`. Then start SBCL and run `(ql:quickload :photo-ai-lisp)` followed by `(photo-ai-lisp:start)`. The app will be available at <http://localhost:8080>.
 
