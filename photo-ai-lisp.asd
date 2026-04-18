@@ -9,6 +9,7 @@
                              (:file "ansi")
                              (:file "screen")
                              (:file "sgr")
+                             (:file "screen-events")
                              (:file "agent")
                              (:file "main")))))
 

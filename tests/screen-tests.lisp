@@ -158,6 +158,59 @@
     (is (= 0 (photo-ai-lisp:cursor-col cursor)))
     (is (= 1 (length (photo-ai-lisp:screen-scrollback s))))))
 
+(test apply-event-cursor-move-up-down-left-right
+  (let* ((s (photo-ai-lisp:make-screen 4 5))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (setf (photo-ai-lisp:cursor-row cursor) 1
+          (photo-ai-lisp:cursor-col cursor) 1)
+    (photo-ai-lisp:apply-event s '(:type :cursor-move :direction :down :count 2))
+    (is (= 3 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 1 (photo-ai-lisp:cursor-col cursor)))
+    (photo-ai-lisp:apply-event s '(:type :cursor-move :direction :right :count 3))
+    (is (= 3 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 4 (photo-ai-lisp:cursor-col cursor)))
+    (photo-ai-lisp:apply-event s '(:type :cursor-move :direction :up :count 1))
+    (is (= 2 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 4 (photo-ai-lisp:cursor-col cursor)))
+    (photo-ai-lisp:apply-event s '(:type :cursor-move :direction :left :count 2))
+    (is (= 2 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 2 (photo-ai-lisp:cursor-col cursor)))))
+
+(test apply-event-cursor-move-clamps-at-screen-edges
+  (let* ((s (photo-ai-lisp:make-screen 3 4))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (setf (photo-ai-lisp:cursor-row cursor) 0
+          (photo-ai-lisp:cursor-col cursor) 0)
+    (photo-ai-lisp:apply-event s '(:type :cursor-move :direction :up :count 5))
+    (is (= 0 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 0 (photo-ai-lisp:cursor-col cursor)))
+    (photo-ai-lisp:apply-event s '(:type :cursor-move :direction :left :count 5))
+    (is (= 0 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 0 (photo-ai-lisp:cursor-col cursor)))
+    (photo-ai-lisp:apply-event s '(:type :cursor-move :direction :down :count 10))
+    (is (= 2 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 0 (photo-ai-lisp:cursor-col cursor)))
+    (photo-ai-lisp:apply-event s '(:type :cursor-move :direction :right :count 10))
+    (is (= 2 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 3 (photo-ai-lisp:cursor-col cursor)))))
+
+(test apply-event-cursor-position-uses-ansi-1-based-coordinates
+  (let* ((s (photo-ai-lisp:make-screen 5 6))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (photo-ai-lisp:apply-event s '(:type :cursor-position :row 3 :col 4))
+    (is (= 2 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 3 (photo-ai-lisp:cursor-col cursor)))))
+
+(test apply-event-cursor-position-clamps-out-of-bounds
+  (let* ((s (photo-ai-lisp:make-screen 3 4))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (photo-ai-lisp:apply-event s '(:type :cursor-position :row 99 :col 99))
+    (is (= 2 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 3 (photo-ai-lisp:cursor-col cursor)))
+    (photo-ai-lisp:apply-event s '(:type :cursor-position :row 0 :col 0))
+    (is (= 0 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 0 (photo-ai-lisp:cursor-col cursor)))))
+
 ;;; --- 5f: screen snapshot ---
 
 (test screen->text-on-blank-screen
