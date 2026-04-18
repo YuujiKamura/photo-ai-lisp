@@ -3,18 +3,16 @@
 (in-suite photo-ai-lisp-tests)
 
 (defun %claude-command ()
-  "Return the claude command to use, accounting for Windows npm install."
-  (or (handler-case
-          (progn (uiop:run-program '("claude" "--version")
-                                   :output nil :error-output nil)
-                 "claude")
-        (error () nil))
-      (when (uiop:os-windows-p)
-        (let ((npm-claude (merge-pathnames
-                           "AppData/Roaming/npm/claude.cmd"
-                           (user-homedir-pathname))))
-          (when (probe-file npm-claude)
-            (namestring npm-claude))))))
+  "Return the claude command to use, accounting for Windows npm install.
+   On Windows, the npm-shim .cmd wrapper does not propagate stdin through
+   uiop:launch-program :input :stream reliably (stdin is closed before
+   the wrapped node.exe reads it), so we only return a command when
+   plain `claude' is directly invocable."
+  (handler-case
+      (progn (uiop:run-program '("claude" "--version")
+                               :output nil :error-output nil)
+             "claude")
+    (error () nil)))
 
 (defun claude-available-p ()
   (not (null (%claude-command))))
