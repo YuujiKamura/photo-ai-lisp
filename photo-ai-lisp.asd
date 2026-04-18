@@ -8,6 +8,7 @@
                 :components ((:file "package")
                              (:file "ansi")
                              (:file "screen")
+                             (:file "sgr")
                              (:file "agent")
                              (:file "main")))))
 
@@ -18,6 +19,7 @@
                 :components ((:file "package")
                              (:file "ansi-tests")
                              (:file "screen-tests")
+                             (:file "sgr-tests")
                              (:file "agent-scenario"))))
   :perform (test-op (o c)
              (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))
