@@ -211,6 +211,100 @@
     (is (= 0 (photo-ai-lisp:cursor-row cursor)))
     (is (= 0 (photo-ai-lisp:cursor-col cursor)))))
 
+(test apply-event-erase-display-mode-0-clears-from-cursor-through-end
+  (let* ((s (photo-ai-lisp:make-screen 3 4))
+         (buffer (photo-ai-lisp:screen-buffer s))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (dotimes (row 3)
+      (dotimes (col 4)
+        (setf (aref buffer row col)
+              (photo-ai-lisp:make-cell :char #\X :fg 3 :bg 4 :bold t :underline t :reverse t))))
+    (setf (photo-ai-lisp:cursor-row cursor) 1
+          (photo-ai-lisp:cursor-col cursor) 2)
+    (photo-ai-lisp:apply-event s '(:type :erase-display :mode 0))
+    (is (char= #\X (photo-ai-lisp:cell-char (aref buffer 1 1))))
+    (is (char= #\Space (photo-ai-lisp:cell-char (aref buffer 1 2))))
+    (is (= 7 (photo-ai-lisp:cell-fg (aref buffer 1 2))))
+    (is (= 0 (photo-ai-lisp:cell-bg (aref buffer 2 3))))
+    (is (null (photo-ai-lisp:cell-bold (aref buffer 2 3))))))
+
+(test apply-event-erase-display-mode-1-clears-start-through-cursor
+  (let* ((s (photo-ai-lisp:make-screen 3 4))
+         (buffer (photo-ai-lisp:screen-buffer s))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (dotimes (row 3)
+      (dotimes (col 4)
+        (setf (aref buffer row col)
+              (photo-ai-lisp:make-cell :char #\Y :fg 1 :bg 6 :underline t))))
+    (setf (photo-ai-lisp:cursor-row cursor) 1
+          (photo-ai-lisp:cursor-col cursor) 1)
+    (photo-ai-lisp:apply-event s '(:type :erase-display :mode 1))
+    (is (char= #\Space (photo-ai-lisp:cell-char (aref buffer 0 0))))
+    (is (null (photo-ai-lisp:cell-underline (aref buffer 1 1))))
+    (is (char= #\Y (photo-ai-lisp:cell-char (aref buffer 1 2))))
+    (is (char= #\Y (photo-ai-lisp:cell-char (aref buffer 2 3))))))
+
+(test apply-event-erase-display-mode-2-clears-entire-screen
+  (let* ((s (photo-ai-lisp:make-screen 2 3))
+         (buffer (photo-ai-lisp:screen-buffer s)))
+    (dotimes (row 2)
+      (dotimes (col 3)
+        (setf (aref buffer row col)
+              (photo-ai-lisp:make-cell :char #\Z :fg 2 :bg 5 :reverse t))))
+    (photo-ai-lisp:apply-event s '(:type :erase-display :mode 2))
+    (dotimes (row 2)
+      (dotimes (col 3)
+        (let ((cell (aref buffer row col)))
+          (is (char= #\Space (photo-ai-lisp:cell-char cell)))
+          (is (= 7 (photo-ai-lisp:cell-fg cell)))
+          (is (= 0 (photo-ai-lisp:cell-bg cell)))
+          (is (null (photo-ai-lisp:cell-reverse cell))))))))
+
+(test apply-event-erase-line-mode-0-clears-cursor-through-line-end
+  (let* ((s (photo-ai-lisp:make-screen 2 5))
+         (buffer (photo-ai-lisp:screen-buffer s))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (dotimes (col 5)
+      (setf (aref buffer 1 col)
+            (photo-ai-lisp:make-cell :char #\L :fg 4 :bg 1 :bold t)))
+    (setf (photo-ai-lisp:cursor-row cursor) 1
+          (photo-ai-lisp:cursor-col cursor) 2)
+    (photo-ai-lisp:apply-event s '(:type :erase-line :mode 0))
+    (is (char= #\L (photo-ai-lisp:cell-char (aref buffer 1 1))))
+    (is (char= #\Space (photo-ai-lisp:cell-char (aref buffer 1 2))))
+    (is (null (photo-ai-lisp:cell-bold (aref buffer 1 4))))))
+
+(test apply-event-erase-line-mode-1-clears-line-start-through-cursor
+  (let* ((s (photo-ai-lisp:make-screen 1 5))
+         (buffer (photo-ai-lisp:screen-buffer s))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (dotimes (col 5)
+      (setf (aref buffer 0 col)
+            (photo-ai-lisp:make-cell :char #\M :fg 6 :bg 2 :underline t)))
+    (setf (photo-ai-lisp:cursor-col cursor) 3)
+    (photo-ai-lisp:apply-event s '(:type :erase-line :mode 1))
+    (is (char= #\Space (photo-ai-lisp:cell-char (aref buffer 0 0))))
+    (is (null (photo-ai-lisp:cell-underline (aref buffer 0 3))))
+    (is (char= #\M (photo-ai-lisp:cell-char (aref buffer 0 4))))))
+
+(test apply-event-erase-line-mode-2-clears-entire-line-only
+  (let* ((s (photo-ai-lisp:make-screen 2 4))
+         (buffer (photo-ai-lisp:screen-buffer s))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (dotimes (row 2)
+      (dotimes (col 4)
+        (setf (aref buffer row col)
+              (photo-ai-lisp:make-cell :char (if (= row 0) #\A #\B) :fg 5 :bg 3 :reverse t))))
+    (setf (photo-ai-lisp:cursor-row cursor) 1)
+    (photo-ai-lisp:apply-event s '(:type :erase-line :mode 2))
+    (dotimes (col 4)
+      (let ((cell (aref buffer 1 col)))
+        (is (char= #\Space (photo-ai-lisp:cell-char cell)))
+        (is (= 7 (photo-ai-lisp:cell-fg cell)))
+        (is (null (photo-ai-lisp:cell-reverse cell)))))
+    (is (char= #\A (photo-ai-lisp:cell-char (aref buffer 0 0))))
+    (is (char= #\A (photo-ai-lisp:cell-char (aref buffer 0 3))))))
+
 ;;; --- 5f: screen snapshot ---
 
 (test screen->text-on-blank-screen
