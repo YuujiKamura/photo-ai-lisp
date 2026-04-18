@@ -85,9 +85,20 @@
         (setf (cursor-col cursor) 0)
         (incf (cursor-row cursor)))
        (t
-        (screen-scroll-up screen)
-        (setf (cursor-row cursor) (1- (screen-rows screen))
+       (screen-scroll-up screen)
+       (setf (cursor-row cursor) (1- (screen-rows screen))
               (cursor-col cursor) 0))))))
+
+(defun screen->text (screen)
+  (with-output-to-string (out)
+    (dotimes (row (screen-rows screen))
+      (let* ((chars (loop for col below (screen-cols screen)
+                          collect (cell-char (aref (screen-buffer screen) row col))))
+             (last-non-space (position #\Space chars :from-end t :test-not #'char=)))
+        (when last-non-space
+          (write-string (coerce (subseq chars 0 (1+ last-non-space)) 'string) out)))
+      (when (< row (1- (screen-rows screen)))
+        (terpri out)))))
 
 (defun make-screen (rows cols)
   "Create a ROWS×COLS screen buffer filled with default cells."

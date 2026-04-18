@@ -21,5 +21,7 @@
            #:screen-scrollback #:screen-scroll-up
            ;; event dispatch (5e.1)
            #:apply-event #:register-event-handler
+           ;; screen snapshot (5f)
+           #:screen->text
            ;; sgr parser (5e.4a)
            #:parse-sgr-params))

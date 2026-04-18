@@ -157,3 +157,15 @@
     (is (= 1 (photo-ai-lisp:cursor-row cursor)))
     (is (= 0 (photo-ai-lisp:cursor-col cursor)))
     (is (= 1 (length (photo-ai-lisp:screen-scrollback s))))))
+
+;;; --- 5f: screen snapshot ---
+
+(test screen->text-on-blank-screen
+  (let ((s (photo-ai-lisp:make-screen 2 3)))
+    (is (string= (format nil "~%") (photo-ai-lisp:screen->text s)))))
+
+(test screen->text-contains-printed-content
+  (let ((s (photo-ai-lisp:make-screen 2 4)))
+    (photo-ai-lisp:apply-event s '(:type :print :char #\H))
+    (photo-ai-lisp:apply-event s '(:type :print :char #\i))
+    (is (search "Hi" (photo-ai-lisp:screen->text s)))))
