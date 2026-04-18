@@ -13,4 +13,9 @@ demo/shell-console.log
 demo/term-console.log
 demo/shell-dom.txt
 demo/term-dom.txt
+demo/shell-case-console.log
+demo/shell-case-dom.txt
+demo/shell-case-server.log
+demo/atom10-server.err.log
+demo/atom10-server.out.log
 .claude/

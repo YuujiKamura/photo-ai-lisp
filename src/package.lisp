@@ -39,4 +39,12 @@
            #:pipeline-result-success-p
            #:pipeline-result-steps
            #:pipeline-result-final-output
-           #:pipeline-result-failure-index))
+           #:pipeline-result-failure-index
+           ;; policy #04 — business UI skeleton (stubs; implementation pending)
+           #:*case-root*
+           #:scan-cases
+           #:case-id
+           #:case-from-id
+           #:list-cases-handler
+           #:case-view-handler
+           #:home-handler))

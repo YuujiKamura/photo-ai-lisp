@@ -10,6 +10,7 @@
                              (:file "agent")
                              (:file "case")
                              (:file "pipeline")
+                             (:file "business-ui")
                              (:file "term")
                              (:file "main")))))
 
@@ -27,6 +28,7 @@
                              (:file "term-coverage-tests")
                              (:file "main-coverage-tests")
                              (:file "case-tests")
-                             (:file "pipeline-tests"))))
+                             (:file "pipeline-tests")
+                             (:file "business-ui-tests"))))
   :perform (test-op (o c)
              (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))
