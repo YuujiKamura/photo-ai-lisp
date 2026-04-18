@@ -85,8 +85,7 @@
 
 (defun clear-session (session-id)
   "Remove the binding for SESSION-ID. Idempotent."
-  (declare (ignore session-id))
-  (%unimpl 'clear-session))
+  (remhash session-id *sessions*))
 
 ;; ---- env composition for subprocess --------------------------------------
 
