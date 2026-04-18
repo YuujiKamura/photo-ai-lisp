@@ -82,8 +82,7 @@
 
 (defun lookup-session (session-id)
   "Return the PHOTO-CASE for SESSION-ID, or NIL."
-  (declare (ignore session-id))
-  (%unimpl 'lookup-session))
+  (gethash session-id *sessions*))
 
 (defun clear-session (session-id)
   "Remove the binding for SESSION-ID. Idempotent."
