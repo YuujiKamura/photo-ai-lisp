@@ -93,8 +93,16 @@
   "Return an alist of (NAME . VALUE) env entries exposing CASE fields
    to a child process. Keys: PHOTO_AI_CASE_PATH, PHOTO_AI_CASE_NAME,
    PHOTO_AI_MASTERS_DIR. Nil slot values become empty strings."
-  (declare (ignore case))
-  (%unimpl 'build-case-env))
+  (flet ((slot->string (value)
+           (cond ((null value) "")
+                 ((pathnamep value) (namestring value))
+                 (t (princ-to-string value)))))
+    (list (cons "PHOTO_AI_CASE_PATH"
+                (slot->string (photo-case-path case)))
+          (cons "PHOTO_AI_CASE_NAME"
+                (slot->string (photo-case-name case)))
+          (cons "PHOTO_AI_MASTERS_DIR"
+                (slot->string (photo-case-masters-dir case))))))
 
 ;; ---- request plumbing ----------------------------------------------------
 
