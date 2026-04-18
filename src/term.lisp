@@ -108,8 +108,23 @@
 (pushnew '%find-echo-resource hunchensocket:*websocket-dispatch-table*)
 (pushnew '%find-shell-resource hunchensocket:*websocket-dispatch-table*)
 
-;;; /term — xterm.js page connecting to /ws/echo (Phase 1 echo demo).
-;;; /shell — xterm.js page connecting to /ws/shell (Phase 2 subprocess).
+;;; /static/* — serve the ghostty-web bundle (and any future assets) from
+;;; the repo's static/ directory. ghostty-web is an ES module that loads
+;;; ghostty-vt.wasm at runtime, so both files must sit under the same
+;;; URL prefix the browser sees.
+(defun %static-root ()
+  (merge-pathnames
+   "static/"
+   (or (asdf:system-source-directory :photo-ai-lisp)
+       *default-pathname-defaults*)))
+
+(pushnew (hunchentoot:create-folder-dispatcher-and-handler
+          "/static/" (%static-root))
+         hunchentoot:*dispatch-table*
+         :test #'equal)
+
+;;; /term — ghostty-web page connecting to /ws/echo (Phase 1 echo demo).
+;;; /shell — ghostty-web page connecting to /ws/shell (Phase 2 subprocess).
 
 (hunchentoot:define-easy-handler (shell-page :uri "/shell") ()
   (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
@@ -118,37 +133,51 @@
 <head>
   <meta charset=\"utf-8\">
   <title>shell</title>
-  <link rel=\"stylesheet\" href=\"https://unpkg.com/xterm@5.3.0/css/xterm.css\" />
   <style>
-    html, body { background: #1e1e1e; margin: 0; padding: 0; height: 100%; }
-    #terminal { padding: 8px; }
+    html, body { background: #1e1e1e; color: #eee; margin: 0; padding: 0; height: 100%;
+                 font-family: Menlo, Consolas, monospace; }
+    #terminal { padding: 8px; height: calc(100vh - 16px); }
+    #status { position: fixed; top: 4px; right: 8px; font-size: 11px; opacity: 0.6; }
   </style>
 </head>
 <body>
+  <div id=\"status\">connecting…</div>
   <div id=\"terminal\"></div>
-  <script src=\"https://unpkg.com/xterm@5.3.0/lib/xterm.js\"></script>
-  <script>
+  <script type=\"module\">
+    import { init, Terminal } from '/static/ghostty-web/ghostty-web.js';
+
+    const statusEl = document.getElementById('status');
+    function setStatus(s) { statusEl.textContent = s; }
+
+    await init();
+
     const term = new Terminal({
-      cursorBlink: true,
-      fontFamily: 'Menlo, Consolas, monospace',
-      fontSize: 14,
-      theme: { background: '#1e1e1e' }
+      cols: 100, rows: 30,
+      theme: { background: '#1e1e1e', foreground: '#eeeeee' }
     });
     term.open(document.getElementById('terminal'));
-    term.write('\\x1b[33m[connecting to shell subprocess...]\\x1b[0m\\r\\n');
 
-    const ws = new WebSocket('ws://' + location.host + '/ws/shell');
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(wsProto + '://' + location.host + '/ws/shell');
     ws.binaryType = 'arraybuffer';
 
-    ws.onopen  = function() { term.write('\\x1b[32m[connected]\\x1b[0m\\r\\n'); };
-    ws.onclose = function() { term.write('\\r\\n\\x1b[31m[disconnected]\\x1b[0m\\r\\n'); };
-    ws.onerror = function() { term.write('\\r\\n\\x1b[31m[ws error]\\x1b[0m\\r\\n'); };
-    ws.onmessage = function(e) {
+    ws.onopen  = () => setStatus('connected');
+    ws.onclose = () => setStatus('disconnected');
+    ws.onerror = () => setStatus('ws error');
+    ws.onmessage = (e) => {
       term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data));
     };
 
-    term.onData(function(data) {
+    term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(data);
+    });
+
+    term.onResize(({ cols, rows }) => {
+      // Server-side PTY resize is not wired yet; send as JSON sentinel so
+      // the Lisp side can pick it up later without breaking byte stream.
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send('\\x1bGW:resize:' + cols + 'x' + rows);
+      }
     });
   </script>
 </body>
@@ -161,49 +190,43 @@
 <head>
   <meta charset=\"utf-8\">
   <title>terminal echo</title>
-  <link rel=\"stylesheet\" href=\"https://unpkg.com/xterm@5.3.0/css/xterm.css\" />
   <style>
-    html, body { background: #1e1e1e; margin: 0; padding: 0; height: 100%; }
-    #terminal { padding: 8px; }
+    html, body { background: #1e1e1e; color: #eee; margin: 0; padding: 0; height: 100%;
+                 font-family: Menlo, Consolas, monospace; }
+    #terminal { padding: 8px; height: calc(100vh - 16px); }
+    #status { position: fixed; top: 4px; right: 8px; font-size: 11px; opacity: 0.6; }
   </style>
 </head>
 <body>
+  <div id=\"status\">connecting…</div>
   <div id=\"terminal\"></div>
-  <script src=\"https://unpkg.com/xterm@5.3.0/lib/xterm.js\"></script>
-  <script>
+  <script type=\"module\">
+    import { init, Terminal } from '/static/ghostty-web/ghostty-web.js';
+
+    const statusEl = document.getElementById('status');
+    function setStatus(s) { statusEl.textContent = s; }
+
+    await init();
+
     const term = new Terminal({
-      cursorBlink: true,
-      fontFamily: 'Menlo, Consolas, monospace',
-      fontSize: 14,
-      theme: { background: '#1e1e1e' }
+      cols: 100, rows: 30,
+      theme: { background: '#1e1e1e', foreground: '#eeeeee' }
     });
     term.open(document.getElementById('terminal'));
 
-    const ws = new WebSocket('ws://' + location.host + '/ws/echo');
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(wsProto + '://' + location.host + '/ws/echo');
     ws.binaryType = 'arraybuffer';
 
-    ws.onopen = function() {
-      term.write('\\r\\n\\x1b[32mConnected to echo server\\x1b[0m\\r\\n');
-      term.write('Type anything — keystrokes are echoed back verbatim.\\r\\n\\r\\n');
-    };
-    ws.onclose = function() {
-      term.write('\\r\\n\\x1b[31m[disconnected]\\x1b[0m\\r\\n');
-    };
-    ws.onerror = function(e) {
-      term.write('\\r\\n\\x1b[31m[ws error]\\x1b[0m\\r\\n');
-    };
-    ws.onmessage = function(e) {
-      if (typeof e.data === 'string') {
-        term.write(e.data);
-      } else {
-        term.write(new Uint8Array(e.data));
-      }
+    ws.onopen    = () => { setStatus('connected'); term.write('\\x1b[32m[echo server]\\x1b[0m\\r\\n'); };
+    ws.onclose   = () => setStatus('disconnected');
+    ws.onerror   = () => setStatus('ws error');
+    ws.onmessage = (e) => {
+      term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data));
     };
 
-    term.onData(function(data) {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
-      }
+    term.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(data);
     });
   </script>
 </body>
