@@ -1,6 +1,6 @@
 (defsystem "photo-ai-lisp"
   :version "0.0.1"
-  :description "Viaweb-style construction photo manifest app in Common Lisp"
+  :description "REPL-driven construction photo manifest app in Common Lisp"
   :license "MIT"
   :depends-on ("hunchentoot" "cl-who" "cl-store" "yason" "bordeaux-threads")
   :components ((:module "src"
@@ -11,7 +11,9 @@
                              (:file "skills")
                              (:file "pipeline")
                              (:file "views")
-                             (:file "main")))))
+                             (:file "agent")
+                             (:file "main")
+                             (:file "tools")))))
 
 (defsystem "photo-ai-lisp/tests"
   :depends-on ("photo-ai-lisp" "fiveam")
@@ -24,6 +26,8 @@
                              (:file "views-tests")
                              (:file "skills-tests")
                              (:file "pipeline-tests")
-                             (:file "main-tests"))))
+                             (:file "main-tests")
+                             (:file "tools-tests")
+                             (:file "agent-tests"))))
   :perform (test-op (o c)
              (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))

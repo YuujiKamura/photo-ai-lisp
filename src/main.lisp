@@ -96,6 +96,31 @@ Returns a plist:
                 (yason:encode (getf result :error) s)))
          (write-string "}" s))))))
 
+(defun chat-dispatch ()
+  (cond
+    ((not (eq (request-method*) :POST))
+     (setf (return-code*) 405) "Method Not Allowed")
+    ((not (localhost-request-p))
+     (setf (return-code*) 403) "Forbidden: /chat is localhost-only")
+    ((not (agent-alive-p))
+     (setf (return-code*) 503)
+     (setf (content-type*) "application/json")
+     "{\"ok\":false,\"error\":\"agent is not running — call (photo-ai-lisp::start-agent) or ensure the configured command is on PATH\"}")
+    (t
+     (setf (content-type*) "application/json")
+     (let ((msg (or (post-parameter "msg") "")))
+       (handler-case
+           (let ((reply (agent-send msg)))
+             (with-output-to-string (s)
+               (write-string "{\"ok\":true,\"reply\":" s)
+               (yason:encode reply s)
+               (write-string ",\"tools\":[]}" s)))
+         (error (c)
+           (with-output-to-string (s)
+             (write-string "{\"ok\":false,\"error\":" s)
+             (yason:encode (princ-to-string c) s)
+             (write-string "}" s))))))))
+
 (defun repl-page ()
   (setf (content-type*) "text/html; charset=utf-8")
   (format nil "<!DOCTYPE html>
@@ -266,9 +291,14 @@ document.querySelectorAll('.chips button').forEach(b=>b.addEventListener('click'
            (redirect "/"))
           (t (setf (return-code*) 405) "Method Not Allowed"))))
 
-(defun start (&key (port 8080))
+(defun start (&key (port 8080) (start-agent-p t))
   (unless *acceptor*
     (load-photos)
+    (when start-agent-p
+      (handler-case (start-agent)
+        (error (c)
+          (format *error-output*
+                  "~&[photo-ai-lisp] agent spawn failed (~A). /chat will return 503 until (start-agent) succeeds.~%" c))))
     (setf *acceptor* (make-instance 'easy-acceptor :port port))
     (setf *dispatch-table*
           (list (create-prefix-dispatcher "/pipeline/run" 'pipeline-run-dispatch)
@@ -279,12 +309,15 @@ document.querySelectorAll('.chips button').forEach(b=>b.addEventListener('click'
                 (create-prefix-dispatcher "/photos" 'photos-page)
                 (create-prefix-dispatcher "/photo/" 'photo-dispatch)
                 (create-prefix-dispatcher "/upload" 'upload-dispatch)
+                (create-prefix-dispatcher "/chat" 'chat-dispatch)
+                (create-prefix-dispatcher "/repl" 'repl-page)
                 (create-prefix-dispatcher "/eval" 'eval-dispatch)
-                (create-prefix-dispatcher "/" 'repl-page)))
+                (create-prefix-dispatcher "/" 'agent-page)))
     (hunchentoot:start *acceptor*))
   *acceptor*)
 
 (defun stop ()
   (when *acceptor*
     (hunchentoot:stop *acceptor*)
-    (setf *acceptor* nil)))
+    (setf *acceptor* nil))
+  (ignore-errors (stop-agent)))

@@ -16,33 +16,38 @@ Make the project visible to Quicklisp by cloning or symlinking this repository i
 
 The intended development loop is live REPL editing: redefine functions from the REPL while the server is running, reload the browser, and immediately see the new behavior without a separate build or deploy step. SLIME, Sly, or Alive all fit this workflow well and make the edit-eval-refresh cycle much more comfortable.
 
-## The REPL front page
+## Agent front page
 
-`GET /` is not a CRUD table — it is an in-browser Lisp REPL bound to the running SBCL image. Type an expression, hit Enter, and the form is `read` + `eval`'d inside the `photo-ai-lisp` package with `*standard-output*` captured. The response is rendered back into a scrolling history:
+`GET /` serves a minimal chat UI that talks to a resident AI agent subprocess. Humans speak natural language; the agent decides which skill to run; Lisp holds the pipe and provides the tool surface. The boot sequence is:
 
-    > (+ 1 2)
-    3
-    > (length (all-photos))
-    1
-    > (defun greet (n) (format nil "hi ~A" n))
-    GREET
-    > (greet "lisp")
-    "hi lisp"
+1. `(photo-ai-lisp:start)` spawns `claude --dangerously-skip-permissions --model sonnet` (the defaults, `*agent-command*` / `*agent-args*`) with piped stdin/stdout/stderr.
+2. A background monitor thread respawns the subprocess on crash, up to three consecutive failures before it gives up with a logged error.
+3. `POST /chat msg=<text>` writes the message to the agent's stdin and drains stdout with a short quiet-period timeout, returning `{"ok":true,"reply":"...","tools":[]}`.
 
-Definitions persist across requests because the eval happens in the same image the server runs in — redefine a handler or a helper and the next request picks it up. The old photo table still lives at `/photos`.
+The agent has access to a small tool surface, registered in `src/tools.lisp`:
+
+| Tool           | Lisp function    | Notes                                                     |
+|----------------|------------------|-----------------------------------------------------------|
+| `scan_photos`  | `run-skill` wrap | EXIF manifest for a directory of JPEGs.                   |
+| `run_pipeline` | `run-pipeline`   | Full photo-ai pipeline in a background thread.            |
+| `list_photos`  | `all-photos`     | In-memory photo list.                                     |
+| `export_pdf`   | Rust exporter    | Shells out to `*rust-export-binary*`.                     |
+| `eval_lisp`    | `parse-and-eval-expr` | Full live-edit escape hatch. Localhost only.         |
 
 ### Safety
 
-- `/eval` refuses any request whose `remote-addr` is not `127.0.0.1` / `::1` and returns `403`.
-- The page carries a conspicuous "Local dev only" banner. Do not expose this server on a public host — `/eval` runs arbitrary Lisp against your image.
-- No auth, no sandbox, no quota. This is a single-developer live-edit environment, not a shared service.
+- Both `/chat` and `/eval` refuse any request whose `remote-addr` is not `127.0.0.1` / `::1` and return `403`.
+- The page carries a conspicuous "Local dev only" banner. The agent can invoke arbitrary subprocesses and evaluate arbitrary Lisp against the running image — do not expose this server publicly.
+- No auth, no sandbox, no quota.
 
-### API
+## The REPL page (`/repl`)
+
+`GET /repl` is the live-edit escape hatch delivered in #11: a textarea that `read`s + `eval`s forms inside the `photo-ai-lisp` package, with stdout captured and a scrolling history. Redefine any function there and the next request picks up the change — the dispatch table registers handlers by symbol so `symbol-function` is looked up fresh each call.
 
 `POST /eval` with form body `expr=<lisp-form>` returns JSON:
 
 - Success: `{"ok":true,"value":"<prin1-of-result>","stdout":"<captured-output>"}`
-- Failure (read error, runtime condition, etc.): `{"ok":false,"error":"<principal-message>"}` with HTTP 200.
+- Failure: `{"ok":false,"error":"<message>"}` with HTTP 200 (not 500).
 
 ## Persistence
 
