@@ -1,0 +1,7 @@
+*.fasl
+*.lisp-tmp
+*.lisp.bak
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
