@@ -50,41 +50,89 @@ Legend:
       where only `cmd.exe` is guaranteed.
       Deps: `2d` · Branch: `main`
 
-### Phase 3: real PTY
+### Phase 3: real PTY (broken into parallel atoms)
 
-- [ ] **3a** ConPTY CFFI bindings (Windows)
-      `src/pty-windows.lisp`. CFFI defcfun for:
-      - `CreatePseudoConsole(COORD size, HANDLE hInput, HANDLE hOutput, DWORD dwFlags, HPCON *phPC)`
-      - `ResizePseudoConsole(HPCON hPC, COORD size)`
-      - `ClosePseudoConsole(HPCON hPC)`
-      Plus `CreatePipe` / `CloseHandle` helpers.
-      Reference Microsoft docs + pywinpty source (do not invent signatures).
-      Deps: `-` · Branch: `feat/3a-conpty`
+#### Phase 3 research (docs only, parallel-safe)
 
-- [ ] **3b** Unix PTY via forkpty
-      `src/pty-unix.lisp`. CFFI binding to `forkpty` or `posix_openpt`.
-      Deps: `-` · Branch: `feat/3b-unix-pty`
+- [ ] **3r.1** research Microsoft ConPTY API surface
+      `docs/conpty-api.md`. Document every function signature from
+      `consoleapi.h` + `processthreadsapi.h` relevant to pseudo-consoles:
+      `CreatePseudoConsole`, `ResizePseudoConsole`, `ClosePseudoConsole`,
+      `CreatePipe`, `CloseHandle`, `STARTUPINFOEX`, `PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE_HANDLE`.
+      No Lisp code. Pure documentation grep from Microsoft docs.
+      Deps: `-` · Branch: `docs/3r1-conpty-api`
+
+- [ ] **3r.2** research existing ConPTY wrappers for reference
+      `docs/conpty-wrappers.md`. Summarize how pywinpty / node-pty /
+      microsoft/Terminal handle the overlapped IO pump, the attribute
+      list setup, and the handle cleanup order.
+      Deps: `-` · Branch: `docs/3r2-conpty-wrappers`
+
+- [ ] **3r.3** research ghostty-web's Go CP implementation
+      `docs/ghostty-web-cp.md`. Read `C:\Users\yuuji\ghostty-web\`,
+      extract the CP wire format and the ConPTY glue. Record what we
+      can steal verbatim vs what must be re-designed for Lisp.
+      Deps: `-` · Branch: `docs/3r3-ghostty-web-cp`
+
+- [ ] **3r.4** research CFFI type helpers for Windows HANDLE / DWORD
+      `docs/cffi-windows-types.md`. Document how cffi-grovel or
+      manual `defctype` maps `HANDLE`, `DWORD`, `COORD`, `HPCON`, etc.
+      Reference cl-async + existing Lisp Windows bindings if found.
+      Deps: `-` · Branch: `docs/3r4-cffi-types`
+
+#### Phase 3 implementation (depends on research)
+
+- [ ] **3a.1** CFFI type defs (`COORD`, `HPCON`, `HANDLE`)
+      `src/pty-windows-types.lisp`. Just the `defctype` + `defcstruct`.
+      No function bindings yet, no behavior. Easy to unit-test by
+      round-tripping values through CFFI.
+      Deps: `3r.1`, `3r.4` · Branch: `feat/3a1-conpty-types`
+
+- [ ] **3a.2** `CreatePipe` + `CloseHandle` bindings
+      `src/pty-windows-pipes.lisp`. Smoke test: create pipe, write
+      byte, read byte, close. No pseudo-console yet.
+      Deps: `3a.1` · Branch: `feat/3a2-conpty-pipes`
+
+- [ ] **3a.3** `CreatePseudoConsole` + `ClosePseudoConsole`
+      `src/pty-windows-core.lisp`. Smoke test: create, then close.
+      Do NOT spawn a child process yet.
+      Deps: `3a.2`, `3r.2` · Branch: `feat/3a3-conpty-core`
+
+- [ ] **3a.4** `ResizePseudoConsole`
+      Same file. Smoke test: call with new COORD, verify no error.
+      Deps: `3a.3` · Branch: `feat/3a4-conpty-resize`
+
+- [ ] **3a.5** `STARTUPINFOEX` + attribute list for child spawn
+      `src/pty-windows-spawn.lisp`. `InitializeProcThreadAttributeList`,
+      `UpdateProcThreadAttribute`, then `CreateProcess` with the pseudo-console.
+      Scenario test: spawn `cmd /c echo hi`, read output.
+      Deps: `3a.4`, `3r.2` · Branch: `feat/3a5-conpty-spawn`
+
+- [ ] **3b.1** Unix `posix_openpt` + `grantpt` + `unlockpt`
+      `src/pty-unix-openpt.lisp`. Just open the PTY, no child yet.
+      Deps: `-` · Branch: `feat/3b1-openpt`
+
+- [ ] **3b.2** Unix `fork` + `exec` with slave side
+      `src/pty-unix-spawn.lisp`. Or use `forkpty` if available.
+      Scenario test: spawn `/bin/echo hi`, read.
+      Deps: `3b.1` · Branch: `feat/3b2-fork`
 
 - [ ] **3c** platform-dispatching PTY API
-      `src/pty.lisp` exports `(pty-spawn command args &key rows cols)`,
-      `(pty-resize handle rows cols)`, `(pty-kill handle)`.
-      Dispatches via `#+windows` / `#+unix` or `(uiop:os-windows-p)`.
-      Deps: `3a`, `3b` · Branch: `main` (merge target)
+      `src/pty.lisp` re-exports `(pty-spawn ...)`, `(pty-resize ...)`,
+      `(pty-kill ...)`. Uses `#+windows` / `#-windows` to pick.
+      Deps: `3a.5`, `3b.2` · Branch: `main` (merge target)
 
 - [ ] **3d** replace phase-2 pipes with PTY
-      Modify `/ws/shell` to use `pty-spawn` instead of `spawn-child`.
-      Child now sees a TTY; `isatty(0)` is true; colors appear.
+      `src/term.lisp` `/ws/shell` swaps in `pty-spawn`.
       Deps: `3c`, `2d` · Branch: `main`
 
-- [ ] **3e** resize message
-      New websocket text message shape: `{"type":"resize","rows":R,"cols":C}`.
-      Browser sends on `xterm.onResize`; server calls `pty-resize`.
+- [ ] **3e** resize websocket message
+      Browser sends `{"type":"resize","rows":R,"cols":C}` on
+      `xterm.onResize`; server dispatches to `pty-resize`.
       Deps: `3d` · Branch: `main`
 
-- [ ] **3f** scenario test: vim renders in the browser PTY
-      `tests/pty-scenario.lisp`. Start PTY with vim, send `:q!` + CR,
-      assert vim prologue byte pattern appears in the output stream.
-      Skip if vim is not on PATH.
+- [ ] **3f** scenario: vim renders
+      `tests/pty-scenario.lisp`. Skip if vim unavailable.
       Deps: `3e` · Branch: `main`
 
 ---
@@ -118,31 +166,36 @@ Legend:
       (cap at e.g. 1000 rows). Exposed as `(screen-scrollback screen)`.
       Deps: `5c` · Branch: `track-b/5d-scrollback`
 
-- [ ] **5e.1** apply `:print`
-      `(apply-event screen event)` for `(:type :print :char C)`:
-      write cell at cursor, advance col, wrap + LF on col == cols.
+#### Apply-event handlers (all share `5c` as dep; parallelizable once `5c` is green)
+
+- [ ] **5e.1** dispatcher skeleton + `:print`
+      `(apply-event screen event)` generic dispatch table.
+      `:print` branch: write cell at cursor, advance col, wrap.
+      Exposes dispatcher so later 5e.* can attach new handlers.
       Deps: `5c` · Branch: `track-b/5e1-print`
 
-- [ ] **5e.2** apply `:cursor-move`, `:cursor-position`
-      Relative and absolute cursor motion.
-      Deps: `5e.1` · Branch: `track-b/5e2-cursor`
+- [ ] **5e.2** `:cursor-move` + `:cursor-position`
+      Adds handlers to the dispatcher for relative + absolute cursor.
+      Does not depend on `5e.1`'s `:print` semantics.
+      Deps: `5e.1` (dispatcher only) · Branch: `track-b/5e2-cursor`
 
-- [ ] **5e.3** apply `:erase-display`, `:erase-line`
-      Modes 0/1/2 per spec.
-      Deps: `5e.2` · Branch: `track-b/5e3-erase`
+- [ ] **5e.3** `:erase-display` + `:erase-line`
+      Modes 0/1/2. Fills cells with default `cell`.
+      Deps: `5e.1` (dispatcher only) · Branch: `track-b/5e3-erase`
 
-- [ ] **5e.4** apply `:set-attr` (SGR)
-      Parse the `:attrs` param list:
-      - `0` reset
-      - `1` bold, `4` underline, `7` reverse, `22/24/27` their resets
-      - `30-37` fg, `40-47` bg, `90-97` bright-fg, `100-107` bright-bg
-      - `38;5;n` 256-color fg, `48;5;n` 256-color bg
-      - `39`, `49` default fg/bg
-      Update cursor-attrs; applied to subsequent prints.
-      Deps: `5e.1` · Branch: `track-b/5e4-sgr`
+- [ ] **5e.4a** SGR param stream parser (pure)
+      `(parse-sgr-params list)` → plist like `(:reset t)` or
+      `(:fg 3 :bold t)`. Pure function, no screen. Split from the
+      apply step so it is fully unit-testable against the ECMA-48 spec
+      without touching screen state.
+      Deps: `-` · Branch: `track-b/5e4a-sgr-parse`
 
-- [ ] **5e.5** apply `:bs`, `:cr`, `:lf`, `:ht`
-      Cursor navigation for simple controls. `:lf` at bottom scrolls.
+- [ ] **5e.4b** apply parsed SGR to cursor attrs
+      Consumes output of `5e.4a`, mutates cursor's default cell attrs.
+      Deps: `5e.4a`, `5e.1` · Branch: `track-b/5e4b-sgr-apply`
+
+- [ ] **5e.5** `:bs`, `:cr`, `:lf`, `:ht`
+      Simple controls. `:lf` at bottom scrolls (requires `5d`).
       Deps: `5e.1`, `5d` · Branch: `track-b/5e5-controls`
 
 - [ ] **5f** snapshot to plain text
@@ -253,21 +306,56 @@ Legend:
 
 ## Agent allocation hint
 
-- **Claude Sonnet** (current `ghostty-37928`): good at `2a-2e`, `3c-3f`,
-  and any integration task. Hands off for `3a`/`3b` (CFFI signatures
-  are too easy to hallucinate).
-- **Gemini** (current `ghostty-39252`): good at `5a-5h` (pure data,
-  spec-driven), `6a-6b` (wire format design), tests. Not for `3a`/`3b`.
-- **Main Claude** (orchestrator): owns `3a`/`3b` directly, or delegates
-  to a human + Microsoft docs session. Do not task an LLM with ConPTY
-  signatures unsupervised.
-- **Codex** (if quota recovers): equally good as Claude Sonnet on
-  most tasks.
+- **Claude Sonnet**: good at Phase 2 integration, `3c`–`3f`, `5e.*`
+  appliers, scenario tests. Hands off ConPTY signature writing
+  (`3a.*`) — those need supervised review of Microsoft docs.
+- **Gemini**: good at pure-data spec-driven work (`3r.*` research,
+  `5e.4a` SGR parser, `6a` schema). Not for `3a.*` / `3b.*` or
+  anything with live TUI interactions (approve hang risk).
+- **Main Claude** (orchestrator): owns `3a.*` / `3b.*` review —
+  each CFFI binding reviewed against research docs before merge.
+- **Codex**: equally good as Claude Sonnet on most tasks when quota
+  permits.
 
-Parallel candidates right now (all `[ ]` with ≥1 dep unblocked):
+## Parallel candidates right now (all unblocked)
 
-- `2a` (ready; start of Track A Phase 2)
-- `5a` (ready; start of Phase 5 on Track B)
-- `6a` (ready once M1, not yet)
+Research track (purely additive, docs-only, start anytime):
+- **3r.1** ConPTY API surface → `docs/conpty-api.md`
+- **3r.2** ConPTY wrapper reference → `docs/conpty-wrappers.md`
+- **3r.3** ghostty-web CP read → `docs/ghostty-web-cp.md`
+- **3r.4** CFFI Windows types → `docs/cffi-windows-types.md`
 
-Pick one per agent. Do not double-assign.
+Unit test track (covers current `main`):
+- **UT1** tests for `src/proc.lisp` functions (spawn-child, handle
+  bundle accessors, stdio stream accessors)
+- **UT2** tests for `src/term.lisp` (WebSocket resource registration,
+  echo handler round-trip, localhost guard when applicable)
+- **UT3** tests for `src/main.lisp` handlers (start/stop idempotent,
+  acceptor lifecycle)
+- **UT4** tests for `src/agent.lisp` pure helpers (agent-alive-p
+  semantics with no process, agent-stdin/agent-stdout returning nil)
+
+Track B Phase 5 tasks with no cross-file deps beyond `5c`:
+- **5a**, **5b**, **5c** sequential foundation
+- Once `5c` lands: **5e.1** (dispatcher), then **5e.2**, **5e.3**,
+  **5e.4a**, **5e.5** can all proceed in parallel because they each
+  attach a handler to the dispatcher and do not touch each other.
+- **5e.4a** is doubly-parallel: pure function, no screen, no
+  dispatcher yet — it can start right now independent of `5c`.
+- **5d** scrollback is parallel with `5e.2`/`5e.3`/`5e.4*` (only
+  `5e.5` and `5f`/`5g` consume it).
+
+Track A Phase 3 implementation is gated on `3r.*` research:
+- `3a.1` can start once `3r.1` + `3r.4` land.
+- `3a.2` waits on `3a.1`.
+- `3b.1` is Unix-only, can start anytime.
+
+## Rules
+
+- Pick one task per agent. Do not double-assign.
+- Research tasks (`3r.*`) are purely docs — no code changes.
+- The unit-test track (UT*) lives on main-adjacent branches
+  (`feat/ut1-proc`, `feat/ut2-term`, etc.) and should land as
+  separate PRs, not bundled.
+- Sequential within Phase 5 handlers: `5c` must land before the
+  parallel fan-out of `5e.*`.
