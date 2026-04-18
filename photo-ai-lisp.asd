@@ -2,11 +2,12 @@
   :version "0.0.1"
   :description "Lisp orchestrator for construction photo pipeline"
   :license "MIT"
-  :depends-on ("hunchentoot" "cl-who")
+  :depends-on ("hunchentoot" "hunchensocket" "cl-who")
   :components ((:module "src"
                 :serial t
                 :components ((:file "package")
                              (:file "agent")
+                             (:file "term")
                              (:file "main")))))
 
 (defsystem "photo-ai-lisp/tests"
