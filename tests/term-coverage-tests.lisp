@@ -26,8 +26,11 @@
         (progn
           (is (string= "cmd.exe" (first argv))
               "Windows %shell-argv should start with cmd.exe, got: ~s" argv)
-          (is (= 1 (length argv))
-              "Windows %shell-argv should have exactly one element, got: ~s" argv))
+          ;; cmd.exe is invoked with /Q to suppress the input-line echo that
+          ;; otherwise double-prints keystrokes when stdin is a pipe
+          ;; (see src/term.lisp; fix landed via Track B / issue #14).
+          (is (equal '("cmd.exe" "/Q") argv)
+              "Windows %shell-argv should be (cmd.exe /Q), got: ~s" argv))
         (progn
           (is (string= "/bin/bash" (first argv))
               "Unix %shell-argv should start with /bin/bash, got: ~s" argv)
