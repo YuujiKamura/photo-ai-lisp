@@ -74,22 +74,22 @@
                  hunchensocket:*websocket-dispatch-table*)
            "*websocket-dispatch-table* should contain %find-shell-resource"))
 
-;; UT2f: term-page returns HTML containing "xterm.js".
+;; UT2f: term-page returns HTML referencing the ghostty-web bundle.
 ;;  hunchentoot:*reply* must be bound to avoid an unbound-variable error from
 ;;  (setf (content-type*) ...) inside the handler.
-(test term-page-contains-xterm-js
+(test term-page-contains-ghostty-web
   (let ((hunchentoot:*reply* (make-instance 'hunchentoot:reply)))
     (let ((html (photo-ai-lisp::term-page)))
       (is-true (stringp html)
                "term-page should return a string")
-      (is-true (search "xterm.js" html)
-               "term-page HTML should reference xterm.js"))))
+      (is-true (search "/static/ghostty-web/ghostty-web.js" html)
+               "term-page HTML should import the ghostty-web ES module"))))
 
-;; UT2g: shell-page returns HTML containing "xterm.js".
-(test shell-page-contains-xterm-js
+;; UT2g: shell-page returns HTML referencing the ghostty-web bundle.
+(test shell-page-contains-ghostty-web
   (let ((hunchentoot:*reply* (make-instance 'hunchentoot:reply)))
     (let ((html (photo-ai-lisp::shell-page)))
       (is-true (stringp html)
                "shell-page should return a string")
-      (is-true (search "xterm.js" html)
-               "shell-page HTML should reference xterm.js"))))
+      (is-true (search "/static/ghostty-web/ghostty-web.js" html)
+               "shell-page HTML should import the ghostty-web ES module"))))
