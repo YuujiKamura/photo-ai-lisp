@@ -22,4 +22,8 @@ Photos are saved to `~/.photo-ai-lisp/photos.store` via `cl-store` on every muta
 
 The layout macro wraps every page with a shared header, nav, and footer. Redefine it at the REPL and reload the browser to see the change live without restarting. Example: `(defmacro layout (title &body body) ...)` any redefinition takes effect immediately across all handlers.
 
+## Skill integration
+
+Skills under `~/.agents/skills/` are invoked via `(run-skill "photo-scan" dir)`. The layer finds the `.py` script, runs it with python, captures stdout as JSON (`yason`), and signals `skill-error` on non-zero exit.
+
 The code is released under the MIT License. Current status: WIP skeleton.
