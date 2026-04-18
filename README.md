@@ -18,4 +18,8 @@ The intended development loop is Viaweb-style live editing: redefine functions f
 
 Photos are saved to `~/.photo-ai-lisp/photos.store` via `cl-store` on every mutation. The store is loaded automatically on start. Delete that file to reset the local state.
 
+## Templating
+
+The layout macro wraps every page with a shared header, nav, and footer. Redefine it at the REPL and reload the browser to see the change live without restarting. Example: `(defmacro layout (title &body body) ...)` any redefinition takes effect immediately across all handlers.
+
 The code is released under the MIT License. Current status: WIP skeleton.

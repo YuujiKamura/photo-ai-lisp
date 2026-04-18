@@ -8,4 +8,5 @@
                 :components ((:file "package")
                              (:file "models")
                              (:file "storage")
+                             (:file "views")
                              (:file "main")))))

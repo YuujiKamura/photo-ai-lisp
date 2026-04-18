@@ -27,18 +27,6 @@
          (end (or (position #\/ path :start start) (length path))))
     (and (< start end) (parse-int (subseq path start end)))))
 
-(defun layout (title renderer)
-  (with-html-output-to-string (out nil :prologue t)
-    (:html
-     (:head
-      (:title (str title)))
-     (:body
-      (:header :style "margin-bottom: 1rem"
-       (:h1 "photo-ai-lisp")
-       (:p (:a :href "/" "Home") " | " (:a :href "/upload" "Upload")))
-      (funcall renderer out)
-      (:footer :style "margin-top: 1rem" (:small "Viaweb-style live edit prototype"))))))
-
 (defun render-category-options (selected)
   (loop for category in *categories* do
     (htm
@@ -48,40 +36,34 @@
 
 (defun index-page ()
   (layout "photo-ai-lisp"
-          (lambda (out)
-            (with-html-output (out)
-              (:table :border "1" :cellpadding "6"
-               (:tr (:th "ID") (:th "Path") (:th "Category") (:th "Uploaded") (:th "Link"))
-               (dolist (photo (reverse (all-photos)))
-                 (htm
-                  (:tr
-                   (:td (str (photo-id photo)))
-                   (:td (str (photo-path photo)))
-                   (:td (str (string-downcase (symbol-name (photo-category photo)))))
-                   (:td (str (photo-uploaded-at photo)))
-                   (:td (:a :href (format nil "/photo/~D" (photo-id photo)) "Open"))))))))))
+    (:table :border "1" :cellpadding "6"
+     (:tr (:th "ID") (:th "Path") (:th "Category") (:th "Uploaded") (:th "Link"))
+     (dolist (photo (reverse (all-photos)))
+       (htm
+        (:tr
+         (:td (str (photo-id photo)))
+         (:td (str (photo-path photo)))
+         (:td (str (string-downcase (symbol-name (photo-category photo)))))
+         (:td (str (photo-uploaded-at photo)))
+         (:td (:a :href (format nil "/photo/~D" (photo-id photo)) "Open"))))))))
 
 (defun upload-page ()
   (layout "Upload"
-          (lambda (out)
-            (with-html-output (out)
-              (:form :action "/upload" :method "POST" :enctype "multipart/form-data"
-               (:p "Path" (:br) (:input :type "text" :name "path"))
-               (:p "Category" (:br)
-                (:select :name "category" (render-category-options :unclassified)))
-               (:p (:input :type "submit" :value "Save")))))))
+    (:form :action "/upload" :method "POST" :enctype "multipart/form-data"
+     (:p "Path" (:br) (:input :type "text" :name "path"))
+     (:p "Category" (:br)
+      (:select :name "category" (render-category-options :unclassified)))
+     (:p (:input :type "submit" :value "Save")))))
 
 (defun photo-page (photo)
   (layout "Photo"
-          (lambda (out)
-            (with-html-output (out)
-              (:h2 (str (format nil "Photo ~D" (photo-id photo))))
-              (:p "Path: " (str (photo-path photo)))
-              (:p "Uploaded: " (str (photo-uploaded-at photo)))
-              (:form :action (format nil "/photo/~D/category" (photo-id photo)) :method "POST"
-               (:p "Category" (:br)
-                (:select :name "category" (render-category-options (photo-category photo))))
-               (:p (:input :type "submit" :value "Update")))))))
+    (:h2 (str (format nil "Photo ~D" (photo-id photo))))
+    (:p "Path: " (str (photo-path photo)))
+    (:p "Uploaded: " (str (photo-uploaded-at photo)))
+    (:form :action (format nil "/photo/~D/category" (photo-id photo)) :method "POST"
+     (:p "Category" (:br)
+      (:select :name "category" (render-category-options (photo-category photo))))
+     (:p (:input :type "submit" :value "Update")))))
 
 (defun upload-dispatch ()
   (cond ((eq (request-method*) :GET) (upload-page))
