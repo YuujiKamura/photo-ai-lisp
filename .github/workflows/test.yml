@@ -2,9 +2,9 @@ name: test
 
 on:
   push:
-    branches: [main]
+    branches: [main, track-b/ansi-parser]
   pull_request:
-    branches: [main]
+    branches: [main, track-b/ansi-parser]
   workflow_dispatch:
 
 jobs:
