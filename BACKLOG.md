@@ -27,19 +27,19 @@ Legend:
       Windows: default command `("cmd.exe")`. Unix: `("/bin/bash")`.
       Deps: `-` · Branch: `main`
 
-- [ ] **2b** pass text from websocket to child stdin
+- [x] **2b** pass text from websocket to child stdin
       Extend `src/term.lisp` with a new resource `/ws/shell`.
       Each incoming text message → `write-string` to the live child's stdin + flush.
       One child per connection; lifetime tied to the websocket.
       Deps: `2a` · Branch: `main`
 
-- [ ] **2c** stream child stdout to websocket
+- [x] **2c** stream child stdout to websocket
       Background thread per session that reads chunks from `stdout-stream`
       and pushes them as websocket text messages.
       Use `bordeaux-threads:make-thread`. Kill thread on disconnect.
       Deps: `2a`, `2b` · Branch: `main`
 
-- [ ] **2d** graceful shutdown
+- [x] **2d** graceful shutdown
       On websocket close: `close` stdin, wait up to 2s on the process,
       then `uiop:terminate-process`. Join the stdout thread. No leaks.
       Deps: `2c` · Branch: `main`
