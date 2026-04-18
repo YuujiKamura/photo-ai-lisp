@@ -54,11 +54,21 @@
      :masters-dir (when (uiop:directory-exists-p masters-dir)
                     masters-dir))))
 
+(defvar *case-cache* (make-hash-table :test #'equal)
+  "Canonical namestring -> PHOTO-CASE.")
+
+(defvar *case-cache-lock* (bordeaux-threads:make-lock "case-cache")
+  "Protects *CASE-CACHE* mutations.")
+
 (defun find-case (path)
   "Return a PHOTO-CASE for PATH, creating (and caching) via
    CASE-FROM-DIRECTORY on first sight."
-  (declare (ignore path))
-  (%unimpl 'find-case))
+  (let* ((dir (uiop:ensure-directory-pathname path))
+         (key (namestring (truename dir))))
+    (bordeaux-threads:with-lock-held (*case-cache-lock*)
+      (or (gethash key *case-cache*)
+          (setf (gethash key *case-cache*)
+                (case-from-directory dir))))))
 
 ;; ---- session registry ----------------------------------------------------
 
