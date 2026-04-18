@@ -18,6 +18,7 @@
                 :components ((:file "package")
                              (:file "agent-scenario")
                              (:file "proc-scenario")
-                             (:file "proc-tests"))))
+                             (:file "proc-tests")
+                             (:file "term-tests"))))
   :perform (test-op (o c)
              (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))
