@@ -76,3 +76,42 @@
     (photo-ai-lisp:cursor-move cursor s :rel-row 20 :rel-col 20)
     (is (= 2 (photo-ai-lisp:cursor-row cursor)))
     (is (= 3 (photo-ai-lisp:cursor-col cursor)))))
+
+;;; --- 5d: scrollback ---
+
+(test screen-scroll-up-shifts-and-blanks
+  (let* ((s (photo-ai-lisp:make-screen 3 2))
+         (buf (photo-ai-lisp:screen-buffer s)))
+    (setf (photo-ai-lisp:cell-char (aref buf 0 0)) #\A
+          (photo-ai-lisp:cell-char (aref buf 0 1)) #\B
+          (photo-ai-lisp:cell-char (aref buf 1 0)) #\C
+          (photo-ai-lisp:cell-char (aref buf 1 1)) #\D
+          (photo-ai-lisp:cell-char (aref buf 2 0)) #\E
+          (photo-ai-lisp:cell-char (aref buf 2 1)) #\F)
+    (photo-ai-lisp:screen-scroll-up s)
+    (is (char= #\C (photo-ai-lisp:cell-char (aref buf 0 0))))
+    (is (char= #\D (photo-ai-lisp:cell-char (aref buf 0 1))))
+    (is (char= #\E (photo-ai-lisp:cell-char (aref buf 1 0))))
+    (is (char= #\F (photo-ai-lisp:cell-char (aref buf 1 1))))
+    (is (char= #\Space (photo-ai-lisp:cell-char (aref buf 2 0))))
+    (is (char= #\Space (photo-ai-lisp:cell-char (aref buf 2 1))))))
+
+(test screen-scroll-up-saves-top-row-copy
+  (let* ((s (photo-ai-lisp:make-screen 2 2))
+         (buf (photo-ai-lisp:screen-buffer s)))
+    (setf (photo-ai-lisp:cell-char (aref buf 0 0)) #\X
+          (photo-ai-lisp:cell-char (aref buf 0 1)) #\Y)
+    (photo-ai-lisp:screen-scroll-up s)
+    (is (= 1 (length (photo-ai-lisp:screen-scrollback s))))
+    (is (char= #\X (photo-ai-lisp:cell-char (aref (first (photo-ai-lisp:screen-scrollback s)) 0))))
+    (is (char= #\Y (photo-ai-lisp:cell-char (aref (first (photo-ai-lisp:screen-scrollback s)) 1))))
+    (setf (photo-ai-lisp:cell-char (aref buf 0 0)) #\Z)
+    (is (char= #\X (photo-ai-lisp:cell-char (aref (first (photo-ai-lisp:screen-scrollback s)) 0))))))
+
+(test screen-scroll-up-caps-scrollback-at-1000
+  (let ((s (photo-ai-lisp:make-screen 1 1)))
+    (dotimes (n 1005)
+      (setf (photo-ai-lisp:cell-char (aref (photo-ai-lisp:screen-buffer s) 0 0))
+            (code-char (+ 65 (mod n 26))))
+      (photo-ai-lisp:screen-scroll-up s))
+    (is (= 1000 (length (photo-ai-lisp:screen-scrollback s))))))

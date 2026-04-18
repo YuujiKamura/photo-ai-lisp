@@ -17,5 +17,7 @@
            #:make-cursor
            #:cursor-row #:cursor-col #:cursor-visible #:cursor-attrs
            #:cursor-move
+           ;; scrollback (5d)
+           #:screen-scrollback #:screen-scroll-up
            ;; sgr parser (5e.4a)
            #:parse-sgr-params))

@@ -25,7 +25,8 @@
   ((rows   :initarg :rows   :reader screen-rows)
    (cols   :initarg :cols   :reader screen-cols)
    (buffer :accessor screen-buffer)
-   (cursor :initform nil    :accessor screen-cursor)))
+   (cursor :initform nil    :accessor screen-cursor)
+   (scrollback :initform nil :accessor screen-scrollback)))
 
 (defun cursor-move (cursor screen &key (rel-row 0) (rel-col 0))
   (setf (cursor-row cursor)
@@ -35,6 +36,25 @@
         (min (1- (screen-cols screen))
              (max 0 (+ (cursor-col cursor) rel-col))))
   cursor)
+
+(defun screen-scroll-up (screen)
+  (let* ((rows (screen-rows screen))
+         (cols (screen-cols screen))
+         (buffer (screen-buffer screen))
+         (top-row (make-array cols)))
+    (dotimes (col cols)
+      (setf (aref top-row col) (copy-cell (aref buffer 0 col))))
+    (setf (screen-scrollback screen)
+          (subseq (cons top-row (screen-scrollback screen))
+                  0
+                  (min 1000 (1+ (length (screen-scrollback screen))))))
+    (dotimes (row (1- rows))
+      (dotimes (col cols)
+        (setf (aref buffer row col)
+              (copy-cell (aref buffer (1+ row) col)))))
+    (dotimes (col cols)
+      (setf (aref buffer (1- rows) col) (make-cell)))
+    screen))
 
 (defun make-screen (rows cols)
   "Create a ROWS×COLS screen buffer filled with default cells."
