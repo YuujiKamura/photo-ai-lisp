@@ -112,9 +112,40 @@
   (declare (ignore query-string))
   (%unimpl 'parse-shell-case-query))
 
+(defun %json-escape (string)
+  (with-output-to-string (out)
+    (loop for ch across string do
+      (cond ((char= ch #\\) (write-string "\\\\" out))
+            ((char= ch #\") (write-string "\\\"" out))
+            ((char= ch #\Backspace) (write-string "\\b" out))
+            ((char= ch #\Page) (write-string "\\f" out))
+            ((char= ch #\Newline) (write-string "\\n" out))
+            ((char= ch #\Return) (write-string "\\r" out))
+            ((char= ch #\Tab) (write-string "\\t" out))
+            ((<= (char-code ch) 31) (format out "\\u~4,'0X" (char-code ch)))
+            (t (write-char ch out))))))
+
+(defun %slot-string (value)
+  (cond ((null value) "")
+        ((pathnamep value) (namestring value))
+        (t (princ-to-string value))))
+
+(defun %json-value (value)
+  (%json-escape (%slot-string value)))
+
 (defun api-session-handler (session-id)
   "HTTP handler body for GET /api/session/:id. Returns a JSON string
    with keys case_path, case_name, masters_dir, reference_path, or a
    JSON `{\"error\":\"not-found\"}` body when unknown."
-  (declare (ignore session-id))
-  (%unimpl 'api-session-handler))
+  (let ((photo-case (lookup-session session-id)))
+    (if photo-case
+        (format nil
+                "{\"id\":\"~a\",\"case_path\":\"~a\",\"case_name\":\"~a\",\"masters_dir\":\"~a\",\"reference_path\":\"~a\"}"
+                (%json-value session-id)
+                (%json-value (photo-case-path photo-case))
+                (%json-value (photo-case-name photo-case))
+                (%json-value (photo-case-masters-dir photo-case))
+                (%json-value (photo-case-reference-path photo-case)))
+        (format nil
+                "{\"error\":\"not-found\",\"id\":\"~a\"}"
+                (%json-value session-id)))))
