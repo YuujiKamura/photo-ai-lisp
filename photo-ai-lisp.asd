@@ -20,6 +20,7 @@
                              (:file "proc-scenario")
                              (:file "proc-tests")
                              (:file "term-tests")
-                             (:file "main-tests"))))
+                             (:file "main-tests")
+                             (:file "agent-tests"))))
   :perform (test-op (o c)
              (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))
