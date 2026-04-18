@@ -1,0 +1,23 @@
+source: synth:C:\Users\yuuji\AppData\Local\Temp\xlsx-probe-synth-947woql_
+photos: 5
+  src  synth-00.jpg                             bc7e67fd0e15e46a       15309 bytes
+  src  synth-01.jpg                             47f882378b3842af       14339 bytes
+  src  synth-02.jpg                             c67374faaa519dff       12858 bytes
+  src  synth-03.jpg                             2109955289bdc66f       12907 bytes
+  src  synth-04.jpg                             e5738fbd9f377390       14184 bytes
+wrote: C:\Users\yuuji\photo-ai-lisp\demo\xlsx-probe-out.xlsx  (27242 bytes)
+xl/media entries: 5
+  xlsx xl/media/image1.jpeg                     bc7e67fd0e15e46a       15309 bytes
+  xlsx xl/media/image2.jpeg                     47f882378b3842af       14339 bytes
+  xlsx xl/media/image3.jpeg                     c67374faaa519dff       12858 bytes
+  xlsx xl/media/image4.jpeg                     2109955289bdc66f       12907 bytes
+  xlsx xl/media/image5.jpeg                     e5738fbd9f377390       14184 bytes
+PASS synth-00.jpg  bc7e67fd0e15e46a
+PASS synth-01.jpg  47f882378b3842af
+PASS synth-02.jpg  c67374faaa519dff
+PASS synth-03.jpg  2109955289bdc66f
+PASS synth-04.jpg  e5738fbd9f377390
+total originals: 69597 bytes
+total xlsx:      27242 bytes
+overhead ratio:  -0.6086  (xlsx smaller)
+result: 5/5 PASS
