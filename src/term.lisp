@@ -42,11 +42,20 @@
 (defvar *shell-resource* (make-instance 'shell-resource))
 
 (defun %shell-argv ()
+  ;; cmd.exe /Q suppresses echo; we keep echo off for pipe-driven usage so the
+  ;; terminal does not double-print characters we already typed. The banner
+  ;; still appears once at startup.
   (if (uiop:os-windows-p)
-      '("cmd.exe")
+      '("cmd.exe" "/Q")
       (list "/bin/bash" "--norc" "--noprofile")))
 
 ;;; 2c — stdout pump: read chunks from child stdout, push to websocket.
+;;; LISTEN can lie about character availability on Windows pipe streams (and on
+;;; UTF-8 decoded streams mid-multibyte), so READ-CHAR may return NIL even when
+;;; we were told a character was ready. Treat NIL as "no data right now" —
+;;; flushing the buffer and sleeping briefly — rather than trying to push NIL
+;;; into the character buffer, which used to signal "(MOD 1114112)" type
+;;; errors and tear down the WebSocket client on the first keystroke.
 (defun %stdout-pump (client child)
   (let ((out (child-process-stdout child))
         (buf (make-array 512 :element-type 'character
@@ -56,9 +65,17 @@
           (cond
             ((listen out)
              (let ((c (read-char out nil :eof)))
-               (if (eq c :eof)
-                   (return)
-                   (vector-push-extend c buf))))
+               (cond
+                 ((eq c :eof) (return))
+                 ((null c)
+                  ;; LISTEN said yes but READ-CHAR had nothing. Flush any
+                  ;; pending buffer and back off.
+                  (when (plusp (length buf))
+                    (ignore-errors
+                      (hunchensocket:send-text-message client (copy-seq buf)))
+                    (setf (fill-pointer buf) 0))
+                  (sleep 0.02))
+                 (t (vector-push-extend c buf)))))
             ((plusp (length buf))
              (ignore-errors
                (hunchensocket:send-text-message client (copy-seq buf)))
@@ -66,7 +83,10 @@
             ((not (child-alive-p child))
              (return))
             (t (sleep 0.02))))
-      (error () nil))))
+      (error (e)
+        (format *error-output*
+                "[shell stdout-pump] ~a: ~a~%"
+                (type-of e) e)))))
 
 ;;; 2b — on connect: spawn child, start stdout pump thread.
 (defmethod hunchensocket:client-connected ((resource shell-resource)
@@ -91,15 +111,63 @@
       (kill-child child)
       (setf (shell-client-child client) nil))))
 
-;;; 2b — text message received: write to child stdin.
+;;; Accept binary frames on the shell resource — hunchensocket's default
+;;; CHECK-MESSAGE rejects them. We need binary frames because hunchensocket's
+;;; text-frame path UTF-8-decodes the masked payload through flexi-streams,
+;;; which signals "(MOD 1114112)" for payloads ending in a bare CR (0x0D)
+;;; under :crlf line-ending handling. xterm.js' Enter key emits exactly that,
+;;; which kills the WebSocket on the first keystroke.
+(defmethod hunchensocket:check-message ((resource shell-resource)
+                                         (client hunchensocket:websocket-client)
+                                         (opcode (eql hunchensocket::+binary-frame+))
+                                         length total)
+  (declare (ignore resource client length total))
+  nil)
+
+(defun %write-octets-to-child (octets child)
+  ;; cmd.exe reading from a pipe completes a line on #\Newline (LF), not on
+  ;; bare CR. xterm.js's Enter key emits #\Return only, so translate bare CR
+  ;; (not already followed by LF) into CRLF before handing it to the child.
+  (let ((stdin (child-process-stdin child))
+        (n (length octets))
+        (i 0))
+    (loop while (< i n)
+          for o = (aref octets i)
+          do (cond
+               ((= o 13)                    ; CR
+                (write-char #\Return stdin)
+                (write-char #\Newline stdin)
+                ;; If the client already sent CRLF, skip the LF.
+                (when (and (< (1+ i) n) (= (aref octets (1+ i)) 10))
+                  (incf i))
+                (incf i))
+               (t (write-char (code-char o) stdin) (incf i))))
+    (finish-output stdin)))
+
+;;; 2b — binary message received: write raw bytes to child stdin.
+(defmethod hunchensocket:binary-message-received ((resource shell-resource)
+                                                   (client   shell-client)
+                                                   message)
+  (let ((child (shell-client-child client)))
+    (when (and child (child-alive-p child))
+      (handler-case (%write-octets-to-child message child)
+        (error (e)
+          (format *error-output* "[shell binary-message-received] ~a~%" e))))))
+
+;;; 2b — text message received: write to child stdin. Kept as a fallback for
+;;; clients that don't send binary frames (and for simple payloads without
+;;; trailing CR where the flexi-streams path actually works).
 (defmethod hunchensocket:text-message-received ((resource shell-resource)
                                                   (client   shell-client)
                                                   message)
   (let ((child (shell-client-child client)))
-    (when child
-      (ignore-errors
-        (write-string message (child-process-stdin child))
-        (finish-output (child-process-stdin child))))))
+    (when (and child (child-alive-p child))
+      (handler-case
+          (progn
+            (write-string message (child-process-stdin child))
+            (finish-output (child-process-stdin child)))
+        (error (e)
+          (format *error-output* "[shell text-message-received] ~a~%" e))))))
 
 (defun %find-shell-resource (request)
   (when (string= "/ws/shell" (hunchentoot:script-name request))
@@ -168,8 +236,13 @@
       term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data));
     };
 
+    const encoder = new TextEncoder();
     term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(data);
+      if (ws.readyState === WebSocket.OPEN) {
+        // Binary frame — hunchensocket's text-frame decode path mishandles
+        // bare CR (\\r) in :crlf mode and 1011-closes the socket.
+        ws.send(encoder.encode(data));
+      }
     });
 
     term.onResize(({ cols, rows }) => {

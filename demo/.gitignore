@@ -1,0 +1,11 @@
+node_modules/
+*-FAIL.png
+*-FAIL.log
+*-FAIL.txt
+# Runtime dumps that can leak the run-time CWD (cmd.exe prompts include it)
+# and regenerate on every smoke run. The screenshots are committed for the
+# visual proof; the text dumps are not.
+shell-dom.txt
+shell-console.log
+term-dom.txt
+term-console.log
