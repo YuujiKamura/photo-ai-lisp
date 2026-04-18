@@ -1,14 +1,18 @@
 // demo/shell-smoke.mjs
 //
-// End-to-end browser smoke for the photo-ai-lisp /shell and /term pages.
+// End-to-end browser smoke for the photo-ai-lisp /shell and /term pages,
+// targeting the ghostty-web frontend (WASM VT parser, canvas renderer).
 //
 // Proves the full byte-pipe works:
-//   - HTML page loads
-//   - xterm.js (the Terminal the repo actually vendors in via unpkg) mounts
-//   - WebSocket connects (status reflected in terminal)
-//   - Keystrokes typed through page.keyboard reach the WebSocket
-//   - Bytes flowing back (echo server for /term, cmd.exe for /shell) render in
-//     the terminal's DOM text
+//   - ES module /static/ghostty-web/ghostty-web.js imports, init() resolves
+//   - new Terminal(...) mounts a <canvas> in #terminal
+//   - WebSocket connects (status div flips to "connected")
+//   - Keystrokes typed through page.keyboard reach the WebSocket (binary
+//     frames via TextEncoder on the page, decoded back to cmd.exe stdin)
+//   - Bytes flowing back render into ghostty-web's grid — asserted by
+//     walking term.buffer.active.getLine(y).translateToString() for all
+//     visible + scrollback rows, since canvas contents cannot be read
+//     via innerText
 //
 // Usage:
 //   node demo/shell-smoke.mjs              # assumes server on localhost:18091
@@ -38,6 +42,30 @@ if (!chromePath) {
 
 const results = [];
 
+// Read every line in scrollback + active viewport out of ghostty-web's
+// buffer API. Ghostty-web exposes IBufferLine.translateToString(trimRight).
+async function readTerminalText(page) {
+  return page.evaluate(() => {
+    const t = window.__ghosttyTerm;
+    if (!t) return "[__ghosttyTerm not exposed]";
+    const buf = t.buffer && t.buffer.active;
+    if (!buf) return "[no active buffer]";
+    const lines = [];
+    // Ghostty-web buffer.active.length = rows + scrollback.
+    const total = buf.length || t.rows || 30;
+    for (let y = 0; y < total; y++) {
+      const line = buf.getLine(y);
+      if (!line) continue;
+      try {
+        lines.push(line.translateToString(true));
+      } catch (e) {
+        lines.push(`[line ${y} err: ${e.message}]`);
+      }
+    }
+    return lines.join("\n");
+  });
+}
+
 async function runCase({ name, path, typeText, expect, pngPath, consolePath, domPath }) {
   console.log(`\n=== ${name}: ${BASE}${path} ===`);
   const browser = await puppeteer.launch({
@@ -59,42 +87,45 @@ async function runCase({ name, path, typeText, expect, pngPath, consolePath, dom
   let domText = "";
 
   try {
-    await page.goto(`${BASE}${path}`, { waitUntil: "networkidle2", timeout: 15000 });
+    await page.goto(`${BASE}${path}`, { waitUntil: "networkidle2", timeout: 20000 });
 
-    // xterm.js renders .xterm into #terminal, with internal canvases.
-    await page.waitForSelector("#terminal .xterm", { timeout: 10000 });
+    // ghostty-web's init() resolves in the page module — wait for the
+    // Terminal instance to be exposed on window.
+    await page.waitForFunction(() => !!window.__ghosttyTerm, { timeout: 15000 });
 
-    // Wait until a Terminal instance has opened: .xterm-screen appears once
-    // term.open(...) has laid out the viewport.
-    await page.waitForSelector("#terminal .xterm-screen", { timeout: 10000 });
+    // term.open() appends a <canvas> into #terminal.
+    await page.waitForSelector("#terminal canvas", { timeout: 10000 });
 
-    // Wait for WebSocket OPEN — the page writes a "[connected]" banner.
+    // Wait for WebSocket OPEN — page's #status div flips to "connected".
     await page.waitForFunction(
       () => {
-        const el = document.querySelector("#terminal");
-        return el && el.innerText.toLowerCase().includes("connected");
+        const el = document.getElementById("status");
+        return el && /connected/i.test(el.textContent || "");
       },
       { timeout: 10000 },
     );
 
-    // xterm.js captures keyboard via an internal .xterm-helper-textarea that
-    // must have focus. Clicking .xterm or .xterm-screen does not always
-    // transfer focus to it under headless Chrome, so we focus it directly.
-    await page.$eval("#terminal .xterm-helper-textarea", (el) => el.focus());
+    // Ghostty-web Terminal captures keyboard via a focused canvas (or a
+    // hidden input; API gives focus() on the Terminal itself).
+    await page.evaluate(() => {
+      try {
+        window.__ghosttyTerm.focus && window.__ghosttyTerm.focus();
+      } catch (_) {}
+      const c = document.querySelector("#terminal canvas");
+      if (c) c.focus && c.focus();
+    });
     await page.keyboard.type(typeText, { delay: 30 });
     await page.keyboard.press("Enter");
 
     // Give the subprocess / echo server time to respond and render.
     await new Promise((r) => setTimeout(r, 2500));
 
-    domText = await page.$eval("#terminal", (el) => el.innerText);
+    domText = await readTerminalText(page);
 
-    // xterm.js soft-wraps long lines at the viewport width, which shows up in
-    // innerText as a newline inside our command. Collapse whitespace so the
-    // assertion matches the logical content, not the visual layout.
+    // Collapse whitespace so visual soft-wrap doesn't defeat the assertion.
     const flattened = domText.replace(/\s+/g, "");
     pass = flattened.includes(expect.replace(/\s+/g, ""));
-    if (!pass) reason = `expected substring "${expect}" not found in terminal DOM`;
+    if (!pass) reason = `expected substring "${expect}" not found in buffer`;
   } catch (e) {
     reason = `exception: ${e.message}`;
   }
@@ -118,7 +149,7 @@ async function runCase({ name, path, typeText, expect, pngPath, consolePath, dom
   if (!pass) {
     console.log(`--- console (last lines) ---`);
     console.log(consoleLines.slice(-20).join("\n"));
-    console.log(`--- dom (first 1200 chars) ---`);
+    console.log(`--- buffer (first 1200 chars) ---`);
     console.log(domText.slice(0, 1200));
   }
   results.push({ name, pass, reason });

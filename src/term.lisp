@@ -225,6 +225,11 @@
     });
     term.open(document.getElementById('terminal'));
 
+    // Expose the Terminal instance for the headless-browser smoke in
+    // demo/shell-smoke.mjs — ghostty-web renders to <canvas>, so the only
+    // reliable way to read what's on screen is through the buffer API.
+    window.__ghosttyTerm = term;
+
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(wsProto + '://' + location.host + '/ws/shell');
     ws.binaryType = 'arraybuffer';
@@ -286,6 +291,7 @@
       theme: { background: '#1e1e1e', foreground: '#eeeeee' }
     });
     term.open(document.getElementById('terminal'));
+    window.__ghosttyTerm = term;  // exposed for demo/shell-smoke.mjs
 
     const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(wsProto + '://' + location.host + '/ws/echo');
