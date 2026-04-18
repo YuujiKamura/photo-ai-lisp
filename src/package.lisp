@@ -23,5 +23,6 @@
            #:apply-event #:register-event-handler
            ;; screen snapshot (5f)
            #:screen->text
+           #:screen->html
            ;; sgr parser (5e.4a)
            #:parse-sgr-params))

@@ -10,6 +10,7 @@
                              (:file "screen")
                              (:file "sgr")
                              (:file "screen-events")
+                             (:file "screen-html")
                              (:file "agent")
                              (:file "main")))))
 

@@ -446,3 +446,37 @@
     (photo-ai-lisp:apply-event s '(:type :print :char #\H))
     (photo-ai-lisp:apply-event s '(:type :print :char #\i))
     (is (search "Hi" (photo-ai-lisp:screen->text s)))))
+
+(test screen->html-collapses-same-attr-runs
+  (let* ((s (photo-ai-lisp:make-screen 1 4))
+         (buffer (photo-ai-lisp:screen-buffer s)))
+    (setf (aref buffer 0 0) (photo-ai-lisp:make-cell :char #\A :fg 1 :bg 0)
+          (aref buffer 0 1) (photo-ai-lisp:make-cell :char #\B :fg 1 :bg 0)
+          (aref buffer 0 2) (photo-ai-lisp:make-cell :char #\C :fg 2 :bg 0 :bold t)
+          (aref buffer 0 3) (photo-ai-lisp:make-cell :char #\D :fg 2 :bg 0 :bold t))
+    (let ((html (photo-ai-lisp:screen->html s)))
+      (is (search "<span style=\"color:#cd0000;background:#000000\">AB</span>" html))
+      (is (search "<span style=\"color:#00cd00;background:#000000;font-weight:bold\">CD</span>" html))
+      (is (= 2 (loop with start = 0
+                     for pos = (search "<span style=" html :start2 start)
+                     while pos
+                     do (setf start (+ pos 1))
+                     count pos))))))
+
+(test screen->html-escapes-special-characters
+  (let* ((s (photo-ai-lisp:make-screen 1 3))
+         (buffer (photo-ai-lisp:screen-buffer s)))
+    (setf (aref buffer 0 0) (photo-ai-lisp:make-cell :char #\<)
+          (aref buffer 0 1) (photo-ai-lisp:make-cell :char #\&)
+          (aref buffer 0 2) (photo-ai-lisp:make-cell :char #\>))
+    (let ((html (photo-ai-lisp:screen->html s)))
+      (is (search "&lt;&amp;&gt;" html)))))
+
+(test screen->html-renders-reverse-and-underline-styles
+  (let* ((s (photo-ai-lisp:make-screen 1 1))
+         (buffer (photo-ai-lisp:screen-buffer s)))
+    (setf (aref buffer 0 0)
+          (photo-ai-lisp:make-cell :char #\R :fg 1 :bg 4 :underline t :reverse t))
+    (let ((html (photo-ai-lisp:screen->html s)))
+      (is (search "color:#0000ee;background:#cd0000;text-decoration:underline" html))
+      (is (search ">R</span>" html)))))
