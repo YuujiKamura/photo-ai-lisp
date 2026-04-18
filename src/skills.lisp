@@ -24,9 +24,10 @@
 
 (defun run-skill (skill-name &rest args)
   "Run a skill script as subprocess. Returns parsed JSON (yason object) or signals skill-error."
-  (let ((script (namestring (skill-script-path skill-name))))
+  (let* ((script (namestring (skill-script-path skill-name)))
+         (python (if (uiop:os-windows-p) "python" "python3")))
     (multiple-value-bind (stdout stderr exit-code)
-        (uiop:run-program (list* "python" script args)
+        (uiop:run-program (list* python script args)
                           :output :string
                           :error-output :string
                           :ignore-error-status t)

@@ -1,7 +1,9 @@
 (in-package #:photo-ai-lisp)
 
 (defvar *rust-export-binary*
-  (merge-pathnames "exporters/target/release/photo-ai-rust.exe"
+  (merge-pathnames (if (uiop:os-windows-p)
+                       "exporters/target/release/photo-ai-rust.exe"
+                       "exporters/target/release/photo-ai-rust")
                    (user-homedir-pathname)))
 
 (defvar *pipeline-state* nil)
@@ -52,7 +54,7 @@
                     (cj     (merge-pathnames "contact.jpg" out))
                     (sf     (merge-pathnames "scope.json" out))
                     (script (namestring (skill-script-path "photo-scope-infer"))))
-               (uiop:run-program (list "python" script (namestring mf)
+               (uiop:run-program (list (if (uiop:os-windows-p) "python" "python3") script (namestring mf)
                                        "--out" (namestring cj))
                                  :ignore-error-status t)
                (uiop:with-output-file (f sf :if-exists :supersede)
@@ -69,7 +71,7 @@
                     (xf     (merge-pathnames "matched.json" out))
                     (script (namestring (skill-script-path "photo-match-master"))))
                (multiple-value-bind (so se code)
-                   (uiop:run-program (list "python" script (namestring mf)
+                   (uiop:run-program (list (if (uiop:os-windows-p) "python" "python3") script (namestring mf)
                                            "--scope" (namestring sf)
                                            "--out" (namestring xf))
                                      :output :string :error-output :string :ignore-error-status t)

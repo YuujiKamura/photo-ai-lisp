@@ -42,6 +42,7 @@ jobs:
       - name: Run tests
         run: |
           sbcl --non-interactive \
+               --load ~/quicklisp/setup.lisp \
                --eval '(ql:quickload :fiveam :silent t)' \
                --eval '(ql:quickload :photo-ai-lisp :silent t)' \
                --eval '(asdf:load-system :photo-ai-lisp/tests)' \
