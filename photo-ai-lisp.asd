@@ -21,6 +21,7 @@
                 :components ((:file "package")
                              (:file "ansi-tests")
                              (:file "screen-tests")
+                             (:file "screen-scenario")
                              (:file "sgr-tests")
                              (:file "agent-scenario"))))
   :perform (test-op (o c)

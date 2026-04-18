@@ -39,11 +39,14 @@
 
 (defun %cell-style (cell)
   (multiple-value-bind (fg bg) (%effective-colors cell)
-    (format nil "color:~A;background:~A~@[;font-weight:bold~]~@[;text-decoration:underline~]"
-            (%xterm-color->hex fg)
-            (%xterm-color->hex bg)
-            (cell-bold cell)
-            (cell-underline cell))))
+    (with-output-to-string (out)
+      (format out "color:~A;background:~A"
+              (%xterm-color->hex fg)
+              (%xterm-color->hex bg))
+      (when (cell-bold cell)
+        (write-string ";font-weight:bold" out))
+      (when (cell-underline cell)
+        (write-string ";text-decoration:underline" out)))))
 
 (defun %emit-span-run (out text attrs)
   (format out "<span style=\"~A\">~A</span>"

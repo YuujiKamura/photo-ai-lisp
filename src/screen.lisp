@@ -89,6 +89,23 @@
        (setf (cursor-row cursor) (1- (screen-rows screen))
               (cursor-col cursor) 0))))))
 
+(register-event-handler
+ :cr
+ (lambda (screen event)
+   (declare (ignore event))
+   (setf (cursor-col (screen-cursor screen)) 0)))
+
+(register-event-handler
+ :lf
+ (lambda (screen event)
+   (declare (ignore event))
+   (let ((cursor (screen-cursor screen)))
+     (if (< (cursor-row cursor) (1- (screen-rows screen)))
+         (incf (cursor-row cursor))
+         (progn
+           (screen-scroll-up screen)
+           (setf (cursor-row cursor) (1- (screen-rows screen))))))))
+
 (defun screen->text (screen)
   (with-output-to-string (out)
     (dotimes (row (screen-rows screen))
