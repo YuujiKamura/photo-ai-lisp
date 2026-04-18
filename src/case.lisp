@@ -109,8 +109,15 @@
 (defun parse-shell-case-query (query-string)
   "Pull the `case=<urlencoded-path>` parameter out of a URL query
    string. Return the decoded path as a string, or NIL if absent."
-  (declare (ignore query-string))
-  (%unimpl 'parse-shell-case-query))
+  (when (and query-string (plusp (length query-string)))
+    (loop for segment in (uiop:split-string query-string :separator "&")
+          for eq-pos = (position #\= segment)
+          when (and eq-pos (string= "case" (subseq segment 0 eq-pos)))
+            do (let ((raw (subseq segment (1+ eq-pos))))
+                 ;; Empty case= is treated as NIL for downstream /shell wiring.
+                 (return (if (zerop (length raw))
+                             nil
+                             (hunchentoot:url-decode raw)))))))
 
 (defun %json-escape (string)
   (with-output-to-string (out)
