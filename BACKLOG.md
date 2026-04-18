@@ -21,7 +21,7 @@ Legend:
 
 ### Phase 2: subprocess stdio over websocket
 
-- [ ] **2a** spawn child with piped stdio
+- [x] **2a** spawn child with piped stdio
       Function `src/proc.lisp:spawn-child` → returns an object holding
       `uiop:process-info`, `stdin-stream`, `stdout-stream`, `stderr-stream`.
       Windows: default command `("cmd.exe")`. Unix: `("/bin/bash")`.
