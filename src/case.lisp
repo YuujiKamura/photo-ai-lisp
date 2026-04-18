@@ -44,8 +44,15 @@
 (defun case-from-directory (directory)
   "Build a PHOTO-CASE by inspecting DIRECTORY. Populates REFERENCE-PATH
    when a case.xlsx exists at the top level; otherwise slots are nil."
-  (declare (ignore directory))
-  (%unimpl 'case-from-directory))
+  (let* ((dir (uiop:ensure-directory-pathname directory))
+         (reference-path (merge-pathnames "case.xlsx" dir))
+         (masters-dir (merge-pathnames "masters/" dir)))
+    (make-photo-case
+     :path dir
+     :reference-path (when (uiop:file-exists-p reference-path)
+                       reference-path)
+     :masters-dir (when (uiop:directory-exists-p masters-dir)
+                    masters-dir))))
 
 (defun find-case (path)
   "Return a PHOTO-CASE for PATH, creating (and caching) via
