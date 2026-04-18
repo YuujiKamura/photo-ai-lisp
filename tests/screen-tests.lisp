@@ -29,3 +29,25 @@
         (c2 (photo-ai-lisp:make-cell :char #\X :fg 3)))
     (is (equalp c1 c2))
     (is (not (equalp c1 (photo-ai-lisp:make-cell :char #\Y :fg 3))))))
+
+;;; --- 5b: screen grid ---
+
+(test screen-make-dimensions
+  (let ((s (photo-ai-lisp:make-screen 3 5)))
+    (is (= 3 (photo-ai-lisp:screen-rows s)))
+    (is (= 5 (photo-ai-lisp:screen-cols s)))))
+
+(test screen-buffer-array-shape
+  (let* ((s   (photo-ai-lisp:make-screen 4 10))
+         (buf (photo-ai-lisp:screen-buffer s)))
+    (is (= 4  (array-dimension buf 0)))
+    (is (= 10 (array-dimension buf 1)))))
+
+(test screen-buffer-filled-with-default-cells
+  (let ((s (photo-ai-lisp:make-screen 2 3)))
+    (dotimes (r 2)
+      (dotimes (c 3)
+        (let ((cell (aref (photo-ai-lisp:screen-buffer s) r c)))
+          (is (char= #\Space (photo-ai-lisp:cell-char cell)))
+          (is (= 7 (photo-ai-lisp:cell-fg cell)))
+          (is (= 0 (photo-ai-lisp:cell-bg cell))))))))

@@ -18,10 +18,10 @@
 (defun start (&key (port 8080))
   (unless *acceptor*
     (setf *acceptor* (make-instance 'easy-acceptor :port port))
-    (start *acceptor*))
+    (hunchentoot:start *acceptor*))
   *acceptor*)
 
 (defun stop ()
   (when *acceptor*
-    (stop *acceptor*)
+    (hunchentoot:stop *acceptor*)
     (setf *acceptor* nil)))
