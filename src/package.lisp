@@ -17,4 +17,26 @@
            #:clear-session
            #:build-case-env
            #:parse-shell-case-query
-           #:api-session-handler))
+           #:api-session-handler
+           ;; policy #02 — pipeline DSL (stubs; implementation pending)
+           #:*skills*
+           #:skill
+           #:make-skill
+           #:skill-name
+           #:skill-describe
+           #:skill-invoke
+           #:register-skill
+           #:find-skill
+           #:unregister-skill
+           #:*pipelines*
+           #:pipeline
+           #:defpipeline
+           #:find-pipeline
+           #:pipeline-name
+           #:pipeline-steps
+           #:pipeline-result
+           #:run-pipeline
+           #:pipeline-result-success-p
+           #:pipeline-result-steps
+           #:pipeline-result-final-output
+           #:pipeline-result-failure-index))
