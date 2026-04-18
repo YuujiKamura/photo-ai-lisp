@@ -44,7 +44,7 @@ Legend:
       then `uiop:terminate-process`. Join the stdout thread. No leaks.
       Deps: `2c` · Branch: `main`
 
-- [ ] **2e** scenario test: echo round-trip through bash
+- [x] **2e** scenario test: echo round-trip through bash
       `tests/shell-scenario.lisp`. Spawn bash via `/ws/shell`, write
       `echo hi`+LF, read bytes, assert `hi` present. Skip on Windows
       where only `cmd.exe` is guaranteed.
