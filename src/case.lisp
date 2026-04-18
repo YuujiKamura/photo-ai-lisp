@@ -77,8 +77,7 @@
 
 (defun register-session (session-id case)
   "Record SESSION-ID -> CASE. Overwrites any previous binding."
-  (declare (ignore session-id case))
-  (%unimpl 'register-session))
+  (setf (gethash session-id *sessions*) case))
 
 (defun lookup-session (session-id)
   "Return the PHOTO-CASE for SESSION-ID, or NIL."
