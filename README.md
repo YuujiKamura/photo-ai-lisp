@@ -26,4 +26,8 @@ The layout macro wraps every page with a shared header, nav, and footer. Redefin
 
 Skills under `~/.agents/skills/` are invoked via `(run-skill "photo-scan" dir)`. The layer finds the `.py` script, runs it with python, captures stdout as JSON (`yason`), and signals `skill-error` on non-zero exit.
 
+## Running a scan
+
+Navigate to `/scan`, enter a directory path containing JPEG photos, and click Scan. The `photo-scan` skill (Python) walks the directory, extracts EXIF dates, and returns a JSON manifest. Results appear at `/manifest` as a browsable table.
+
 The code is released under the MIT License. Current status: WIP skeleton.

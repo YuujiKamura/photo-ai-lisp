@@ -31,3 +31,5 @@
       (setf (photo-category photo) category)
       (save-photos))
     photo))
+
+(defvar *current-manifest* nil)

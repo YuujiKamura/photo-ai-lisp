@@ -65,6 +65,47 @@
       (:select :name "category" (render-category-options (photo-category photo))))
      (:p (:input :type "submit" :value "Update")))))
 
+(defun scan-page ()
+  (layout "Scan"
+    (:h2 "Scan photo directory")
+    (:form :action "/scan" :method "POST"
+     (:p "Directory path" (:br) (:input :type "text" :name "dir" :size "60"))
+     (:p (:input :type "submit" :value "Scan")))))
+
+(defun manifest-page ()
+  (layout "Manifest"
+    (:h2 "Photo manifest")
+    (if *current-manifest*
+        (htm
+         (:p (str (format nil "~A photos" (length *current-manifest*))))
+         (:table :border "1" :cellpadding "4"
+          (:tr (:th "File") (:th "Dir") (:th "Date") (:th "OCR preview"))
+          (dolist (rec *current-manifest*)
+            (let ((ocr (or (gethash "ocr_text" rec) "")))
+              (htm (:tr
+                    (:td (str (gethash "file_name" rec "")))
+                    (:td (str (gethash "dir_name" rec "")))
+                    (:td (str (gethash "date" rec "")))
+                    (:td (str (if (> (length ocr) 60)
+                                  (subseq ocr 0 60)
+                                  ocr)))))))))
+        (htm (:p "No manifest loaded. Run a scan first.")))))
+
+(defun scan-dispatch ()
+  (cond
+    ((eq (request-method*) :GET) (scan-page))
+    ((eq (request-method*) :POST)
+     (let ((dir (post-parameter "dir")))
+       (handler-case
+           (progn
+             (setf *current-manifest* (run-skill "photo-scan" dir))
+             (redirect "/manifest"))
+         (skill-error (e)
+           (layout "Scan error"
+             (:h2 "Scan failed")
+             (:pre (str (skill-error-stderr e))))))))
+    (t (setf (return-code*) 405) "Method Not Allowed")))
+
 (defun upload-dispatch ()
   (cond ((eq (request-method*) :GET) (upload-page))
         ((eq (request-method*) :POST)
@@ -92,7 +133,9 @@
     (load-photos)
     (setf *acceptor* (make-instance 'easy-acceptor :port port))
     (setf (dispatch-table *acceptor*)
-          (list (create-prefix-dispatcher "/photo/" #'photo-dispatch)
+          (list (create-prefix-dispatcher "/manifest" #'manifest-page)
+                (create-prefix-dispatcher "/scan" #'scan-dispatch)
+                (create-prefix-dispatcher "/photo/" #'photo-dispatch)
                 (create-prefix-dispatcher "/upload" #'upload-dispatch)
                 (create-prefix-dispatcher "/" #'index-page)))
     (start *acceptor*))
