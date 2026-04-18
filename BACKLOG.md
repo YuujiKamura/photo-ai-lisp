@@ -230,33 +230,128 @@ Legend:
 
 ### Phase 6: CP protocol
 
-- [ ] **6a** message schema
-      `docs/cp-protocol.md` describing the wire format. JSON lines.
-      Types: `input`, `snapshot`, `run`, `resize`, `kill`, `spawn`.
-      Deps: `M1` · Branch: `feat/6a-cp-schema`
+#### Phase 6 research (docs only, parallel-safe, no M1 dep)
 
-- [ ] **6b** session registry
-      `src/cp-session.lisp`. `(cp-new-session)` returns an ID,
-      registers a running PTY + screen. `(cp-find-session id)` lookup.
-      `(cp-end-session id)` cleanup.
-      Deps: `6a` · Branch: `feat/6b-session`
+- [ ] **6r.1** research JSON line framing conventions
+      `docs/cp-framing.md`. Survey how other CP/REPL protocols
+      (LSP, DAP, ghostty-web, jupyter) frame JSON messages over
+      a stream: newline-delimited, length-prefixed, or envelope-wrapped.
+      Recommend one approach with rationale.
+      No Lisp code. Pure docs.
+      Deps: `-` · Branch: `docs/6r1-framing`
 
-- [ ] **6c** non-browser websocket endpoint
-      `/ws/cp` accepts JSON messages, routes to session, returns JSON replies.
-      Deps: `6b` · Branch: `feat/6c-cp-endpoint`
+- [ ] **6r.2** survey cl-json / jsown / shasht / com.gigamonkeys.json
+      `docs/cp-json-lib.md`. Load each in SBCL, compare API surface
+      for encode-to-string + decode-from-string, streaming parse
+      availability, and maintenance status. Pick one for cp-json.lisp.
+      No Lisp code beyond REPL exploration.
+      Deps: `-` · Branch: `docs/6r2-json-lib`
 
-- [ ] **6d** snapshot reply
-      `{"type":"snapshot-reply","text":"...","html":"...","rows":R,"cols":C}`.
-      Deps: `6c`, `5g` · Branch: `feat/6d-snapshot`
+#### Phase 6 pure data (parallel-safe after 6r.*)
 
-- [ ] **6e** input injection
-      `{"type":"input","data":"echo hi\n"}` → PTY stdin write.
-      Deps: `6c` · Branch: `feat/6e-input`
+- [ ] **6a.1** message schema docs
+      `docs/cp-protocol.md`. Wire format spec: JSON lines (or chosen
+      framing from 6r.1). Document every message type with example
+      payloads: `spawn`, `input`, `snapshot`, `resize`, `kill`,
+      `snapshot-reply`, `output`, `error`.
+      No code.
+      Deps: `6r.1` · Branch: `feat/6a1-cp-schema`
 
-- [ ] **6f** external ↔ browser broadcast
-      If both a browser and an external client attach to the same session,
-      any output chunk goes to both. Tested with two fake clients.
-      Deps: `6d`, `6e` · Branch: `feat/6f-broadcast`
+- [ ] **6a.2** JSON encode/decode helpers (pure)
+      `src/cp-json.lisp`. `(cp-encode plist)` → JSON string,
+      `(cp-decode string)` → plist. Uses library from 6r.2.
+      Unit tests: round-trip all message types from 6a.1.
+      No side effects, no WS, no PTY.
+      Deps: `6r.2`, `6a.1` · Branch: `feat/6a2-cp-json`
+
+- [ ] **6b.1** session ID generator (pure)
+      `(generate-session-id)` → hex string (e.g. 16-char random).
+      Pure function, no state. Unit test: uniqueness across 1000 calls.
+      Lives in `src/cp-session.lisp` (new file).
+      Deps: `-` · Branch: `feat/6b1-session-id`
+
+#### Phase 6 session registry (sequential within 6b.*)
+
+- [ ] **6b.2** session registry — storage only
+      `src/cp-session.lisp`. Hash table + `bordeaux-threads:make-lock`.
+      `(cp-new-session)` allocates ID, stores empty plist.
+      `(cp-find-session id)` lookup, `(cp-end-session id)` delete.
+      Unit tests: new → find → end lifecycle; concurrent new from 2 threads.
+      No PTY or screen yet.
+      Deps: `6b.1` · Branch: `feat/6b2-session-store`
+
+- [ ] **6b.3** session PTY + screen attachment
+      Add `:pty` and `:screen` slots to session plist.
+      `(cp-session-attach-pty session-id pty)`,
+      `(cp-session-attach-screen session-id screen)`.
+      Wires up to Phase 3 `pty-spawn` and Phase 5 `make-screen`.
+      Unit test: attach fake structs, retrieve via cp-find-session.
+      Deps: `6b.2`, `3c`, `5b` · Branch: `feat/6b3-session-attach`
+
+#### Phase 6 WebSocket endpoint (depends on 6b.2 + 6a.2)
+
+- [ ] **6c.1** `/ws/cp` resource skeleton
+      `src/cp-endpoint.lisp`. New `cp-client` / `cp-resource` classes.
+      `client-connected` → registers new CP session.
+      `client-disconnected` → calls `cp-end-session`.
+      No message routing yet; logs connect/disconnect.
+      Deps: `6b.2` · Branch: `feat/6c1-cp-resource`
+
+- [ ] **6c.2** message dispatcher
+      `text-message-received` parses JSON (via 6a.2), dispatches on
+      `:type`. Unknown type → `{"type":"error","message":"unknown"}`.
+      Handler table: `defvar *cp-handlers* (make-hash-table :test #'equal)`.
+      `(register-cp-handler type-string fn)` for plug-in handlers.
+      No concrete handlers yet.
+      Deps: `6c.1`, `6a.2` · Branch: `feat/6c2-cp-dispatch`
+
+#### Phase 6 handlers (parallelizable once 6c.2 is green)
+
+- [ ] **6d.1** pure snapshot serializer
+      `(cp-snapshot-payload screen)` → plist suitable for cp-encode:
+      `(:type "snapshot-reply" :text "..." :html "..." :rows R :cols C)`.
+      Pure function. Unit test against a 2×2 synthetic screen.
+      Deps: `6a.2`, `5g` · Branch: `feat/6d1-snapshot-pure`
+
+- [ ] **6d.2** snapshot WS handler
+      `(register-cp-handler "snapshot" ...)` — on request, calls
+      `cp-snapshot-payload`, sends reply to requesting client.
+      Integration test: send snapshot request, verify reply shape.
+      Deps: `6c.2`, `6d.1`, `6b.3` · Branch: `feat/6d2-snapshot-wire`
+
+- [ ] **6e.1** pure input validator
+      `(cp-parse-input msg-plist)` → `(:data "string")` or signals
+      `cp-protocol-error` on bad/missing `:data` field.
+      Pure function. Unit tests for valid, missing, empty data.
+      Deps: `6a.2` · Branch: `feat/6e1-input-pure`
+
+- [ ] **6e.2** input → PTY stdin wire
+      `(register-cp-handler "input" ...)` — validated data string
+      written to session's PTY stdin stream.
+      Deps: `6c.2`, `6e.1`, `6b.3` · Branch: `feat/6e2-input-wire`
+
+#### Phase 6 broadcast (depends on 6d.2 + 6e.2)
+
+- [ ] **6f.1** multi-client session tracking (pure)
+      Add `:clients` slot (list) to session entry.
+      `(session-add-client session-id client)`,
+      `(session-remove-client session-id client)`,
+      `(session-broadcast session-id msg-string)` → sends to all.
+      Thread-safe via session lock. Pure struct ops, no WS dependency.
+      Unit test: add 3 fake clients, broadcast, verify count.
+      Deps: `6b.2` · Branch: `feat/6f1-broadcast-struct`
+
+- [ ] **6f.2** wire PTY output pump → broadcast
+      PTY stdout reader thread calls `session-broadcast` instead of
+      sending to a single client.
+      Deps: `6f.1`, `6d.2`, `6e.2` · Branch: `feat/6f2-broadcast-wire`
+
+- [ ] **6f.3** scenario test: two fake clients receive same output
+      `tests/cp-scenario.lisp`. Spawn one CP session with bash,
+      attach two fake WebSocket clients, send `echo hi`, assert
+      both fake clients receive "hi" in their message log.
+      Skip on Windows.
+      Deps: `6f.2` · Branch: `feat/6f3-broadcast-test`
 
 ---
 
@@ -264,31 +359,100 @@ Legend:
 
 ### Phase 7: claude on the terminal
 
-- [ ] **7a** spawn `claude -p` as a CP session
-      `(agent-spawn-in-cp session-id prompt)` runs claude inside the
-      PTY with its stdin wired to session input.
-      Deps: `6f` · Branch: `feat/7a-agent-spawn`
+#### Phase 7 research (docs only, parallel-safe)
 
-- [ ] **7b** tool-call parser
-      Detect Anthropic-format tool_use blocks in agent output.
-      For claude's text-only `-p` mode, that means parsing the
-      serialized tool calls in the stream.
-      Deps: `7a` · Branch: `feat/7b-toolcall-parse`
+- [ ] **7r.1** document claude -p tool_use text format
+      `docs/claude-tool-use-format.md`. Run `claude -p` with a
+      prompt that triggers a tool call. Capture raw stdout. Document
+      exactly what the serialized `tool_use` block looks like:
+      delimiter lines, JSON envelope, field names.
+      Include 2–3 real captured examples.
+      Deps: `-` · Branch: `docs/7r1-tool-use-format`
 
-- [ ] **7c** tool dispatcher
-      Map tool names → Lisp functions. Start with one pass-through
-      tool (`list_photos` or similar trivial one).
-      Deps: `7b` · Branch: `feat/7c-tool-dispatch`
+- [ ] **7r.2** research streaming JSON fragment detection
+      `docs/tool-use-stream-parse.md`. Survey strategies for detecting
+      a complete JSON object in a character-by-character stream:
+      brace counting, delimiter patterns, partial-parse retry.
+      Recommend one approach for 7a.1.
+      Deps: `7r.1` · Branch: `docs/7r2-stream-parse`
 
-- [ ] **7d** tool result back to agent
-      After dispatching, write the tool result JSON back to the
-      agent's stdin in the format the agent expects.
-      Deps: `7c` · Branch: `feat/7d-tool-result`
+#### Phase 7 pure parsers (parallel-safe, no CP dep)
+
+- [ ] **7a.1** tool-call block detector (pure)
+      `src/tool-call.lisp`. `(find-tool-use-block string start)`
+      → `(:start N :end M :json "...")` or nil.
+      Uses approach from 7r.2 (brace counting or delimiter).
+      Unit tests against captured examples from 7r.1.
+      No process, no WS, no CP.
+      Deps: `7r.1`, `7r.2` · Branch: `feat/7a1-toolcall-detect`
+
+- [ ] **7a.2** tool-call JSON parser (pure)
+      `(parse-tool-use json-string)`
+      → `(:id "..." :name "list_photos" :input {...})` plist.
+      Validates required fields, signals `tool-parse-error` on malformed.
+      Unit tests for valid + invalid shapes.
+      Deps: `7a.1` · Branch: `feat/7a2-toolcall-parse`
+
+- [ ] **7b.1** tool-result JSON formatter (pure)
+      `(format-tool-result tool-use-id result-data)`
+      → JSON string in Anthropic tool_result format that claude -p
+      expects on stdin.
+      Pure function. Unit tests: result round-trips as valid JSON,
+      tool_use_id field present.
+      Deps: `7r.1` · Branch: `feat/7b1-tool-result-fmt`
+
+#### Phase 7 tool registry (parallel with 7a.*/7b.1)
+
+- [ ] **7c.1** tool registry infrastructure
+      `src/tool-registry.lisp`. `defvar *tool-registry*` hash-table.
+      `(register-tool name fn)`, `(dispatch-tool name input)`.
+      `dispatch-tool` returns result or signals `tool-not-found`.
+      Unit tests: register a lambda, dispatch, missing-name error.
+      No specific tools — pure infrastructure.
+      Deps: `-` · Branch: `feat/7c1-tool-registry`
+
+- [ ] **7c.2** `list_photos` tool
+      `src/tool-list-photos.lisp`. Reads `*photos-root*` directory,
+      returns a JSON-encodable list of relative paths.
+      Registers itself via `(register-tool "list_photos" ...)` at
+      load time. Unit test: directory with 3 dummy files → list of 3.
+      Deps: `7c.1` · Branch: `feat/7c2-list-photos`
+
+#### Phase 7 integration (sequential, gates on 7a.*/7b.1/7c.1)
+
+- [ ] **7d.1** agent-spawn-cp
+      `src/agent-cp.lisp`. `(agent-spawn-cp session-id prompt)`
+      launches `claude -p prompt` (using `%claude-command` from
+      `src/agent.lisp`) as a child process attached to a CP session.
+      Returns child-process struct. No tool interception yet.
+      Smoke test: spawn with a trivial prompt, session alive.
+      Deps: `6b.3`, `7c.1` · Branch: `feat/7d1-agent-spawn`
+
+- [ ] **7d.2** tool intercept loop
+      Background thread reads agent stdout, accumulates buffer,
+      calls `find-tool-use-block`. On match:
+        1. `parse-tool-use` → tool name + input
+        2. `dispatch-tool` → result
+        3. `format-tool-result` → JSON
+        4. write JSON + newline to agent stdin
+      Non-tool output forwarded to `session-broadcast` as-is.
+      Unit test: feed a recorded stream with one embedded tool_use,
+      assert dispatch called once and result written to fake stdin.
+      Deps: `7d.1`, `7a.2`, `7b.1`, `7c.1` · Branch: `feat/7d2-tool-loop`
+
+- [ ] **7d.3** multi-tool + partial-block edge cases
+      Extend 7d.2's intercept loop to handle:
+      - tool_use block split across two read chunks
+      - multiple tool_use calls in a single response
+      - tool dispatch error → write `{"type":"error",...}` result
+      Unit tests only — no new process spawning.
+      Deps: `7d.2` · Branch: `feat/7d3-tool-loop-edge`
 
 - [ ] **7e** end-to-end scenario
-      Browser open at `/term`, agent writes text, tools fire, screen
-      reflects both agent text and tool output. Screenshot committed.
-      Deps: `7d` · Branch: `main`
+      Browser at `/shell`, agent spawned via 7d.1, sends a prompt
+      that triggers `list_photos`, result reflected on screen.
+      Screenshot (`docs/phase7-e2e.png`) committed as evidence.
+      Deps: `7d.2`, `7c.2` · Branch: `main`
 
 ---
 
@@ -307,15 +471,16 @@ Legend:
 ## Agent allocation hint
 
 - **Claude Sonnet**: good at Phase 2 integration, `3c`–`3f`, `5e.*`
-  appliers, scenario tests. Hands off ConPTY signature writing
-  (`3a.*`) — those need supervised review of Microsoft docs.
-- **Gemini**: good at pure-data spec-driven work (`3r.*` research,
-  `5e.4a` SGR parser, `6a` schema). Not for `3a.*` / `3b.*` or
-  anything with live TUI interactions (approve hang risk).
-- **Main Claude** (orchestrator): owns `3a.*` / `3b.*` review —
-  each CFFI binding reviewed against research docs before merge.
-- **Codex**: equally good as Claude Sonnet on most tasks when quota
-  permits.
+  appliers, `6c.*`–`6f.*` WS wiring, `7d.*` intercept loop,
+  scenario tests. Hands off ConPTY bindings (`3a.*`).
+- **Gemini**: good at pure-data spec-driven work: `3r.*` / `6r.*` / `7r.*`
+  research docs, `5e.4a` SGR parser, `6a.2` JSON helpers,
+  `7a.1`/`7a.2`/`7b.1` pure parsers, `7c.1` registry infra.
+  Not for `3a.*` / `3b.*` or anything with live TUI interactions.
+- **Main Claude** (orchestrator): owns `3a.*` / `3b.*` review,
+  `7d.*` integration sign-off, and `7e` e2e screenshot.
+- **Codex**: equally good as Claude Sonnet; good fallback for
+  `6b.*` session registry and `7c.2` list_photos tool.
 
 ## Parallel candidates right now (all unblocked)
 
@@ -324,6 +489,9 @@ Research track (purely additive, docs-only, start anytime):
 - **3r.2** ConPTY wrapper reference → `docs/conpty-wrappers.md`
 - **3r.3** ghostty-web CP read → `docs/ghostty-web-cp.md`
 - **3r.4** CFFI Windows types → `docs/cffi-windows-types.md`
+- **6r.1** JSON line framing → `docs/cp-framing.md`
+- **6r.2** cl-json library survey → `docs/cp-json-lib.md`
+- **7r.1** claude -p tool_use format → `docs/claude-tool-use-format.md`
 
 Unit test track (covers current `main`):
 - **UT1** tests for `src/proc.lisp` functions (spawn-child, handle
@@ -335,15 +503,17 @@ Unit test track (covers current `main`):
 - **UT4** tests for `src/agent.lisp` pure helpers (agent-alive-p
   semantics with no process, agent-stdin/agent-stdout returning nil)
 
+Phase 6 pure atoms (no M1 dep, start immediately):
+- **6b.1** session-id generator — pure, trivial
+- **7c.1** tool registry — pure infra, no deps at all
+- **7r.2** stream-parse research — once `7r.1` lands
+
 Track B Phase 5 tasks with no cross-file deps beyond `5c`:
 - **5a**, **5b**, **5c** sequential foundation
 - Once `5c` lands: **5e.1** (dispatcher), then **5e.2**, **5e.3**,
-  **5e.4a**, **5e.5** can all proceed in parallel because they each
-  attach a handler to the dispatcher and do not touch each other.
-- **5e.4a** is doubly-parallel: pure function, no screen, no
-  dispatcher yet — it can start right now independent of `5c`.
-- **5d** scrollback is parallel with `5e.2`/`5e.3`/`5e.4*` (only
-  `5e.5` and `5f`/`5g` consume it).
+  **5e.4a**, **5e.5** can all proceed in parallel.
+- **5e.4a** is doubly-parallel: pure function, start right now.
+- **5d** scrollback parallel with `5e.2`/`5e.3`/`5e.4*`.
 
 Track A Phase 3 implementation is gated on `3r.*` research:
 - `3a.1` can start once `3r.1` + `3r.4` land.
