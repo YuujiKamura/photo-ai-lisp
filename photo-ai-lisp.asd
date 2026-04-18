@@ -8,6 +8,7 @@
                 :components ((:file "package")
                              (:file "proc")
                              (:file "agent")
+                             (:file "case")
                              (:file "term")
                              (:file "main")))))
 
@@ -23,6 +24,7 @@
                              (:file "main-tests")
                              (:file "agent-tests")
                              (:file "term-coverage-tests")
-                             (:file "main-coverage-tests"))))
+                             (:file "main-coverage-tests")
+                             (:file "case-tests"))))
   :perform (test-op (o c)
              (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))

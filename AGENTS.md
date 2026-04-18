@@ -5,6 +5,14 @@ truth. Everything below reinforces it.
 
 ## Non-negotiables
 
+0. **Tests are requirements.** For every policy directive, the policy
+   layer writes a red test suite first (stubs + `tests/*-tests.lisp`)
+   that defines acceptance. Implementation atoms exist solely to make
+   those tests green. Never delete or weaken a red test to pass it;
+   if the spec is wrong, change the test explicitly and document why.
+   A brief that does not name the exact red tests it turns green is
+   an incomplete brief.
+
 1. **Map every change to `REQUIREMENTS.md`.** Before opening a file,
    identify which numbered section (§1 vision, §3 field, §5 flow, §6
    rule) your change implements. If nothing matches, **stop and ask**.
