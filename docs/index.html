@@ -25,9 +25,9 @@
   <main>
     <header>
       <h1>photo-ai-lisp</h1>
-      <p>A small Common Lisp web application exploring Paul Graham&rsquo;s Viaweb / Yahoo Store development style in a personal construction-photo domain.</p>
+      <p>A small Common Lisp web application exploring a REPL-driven, hot-reload development loop in a personal construction-photo domain.</p>
       <p>
-        <span class="badge ok">Viaweb loop verified</span>
+        <span class="badge ok">Live-edit loop verified</span>
         <span class="badge">41/41 tests passing</span>
         <span class="badge">GitHub Actions CI</span>
       </p>
@@ -35,7 +35,7 @@
 
     <h2>Running locally</h2>
     <img class="screenshot" src="screenshot-home.png" alt="Screenshot of photo-ai-lisp running at localhost:8080, showing the Home table with three sample photos.">
-    <p>Hunchentoot serves a Lisp-generated HTML index over <code>localhost:8080</code>. Navigation links go to Upload, Scan, Manifest, and Pipeline views. The footer reads &ldquo;Viaweb-style live edit prototype&rdquo;.</p>
+    <p>Hunchentoot serves a Lisp-generated HTML index over <code>localhost:8080</code>. Navigation links go to Upload, Scan, Manifest, and Pipeline views.</p>
 
     <h2>Why this project exists</h2>
     <p>The stack is SBCL + Hunchentoot + cl-who. The development loop is edit a handler in the editor, <code>(load "src/main.lisp")</code> at a running REPL, refresh the browser, see the change &mdash; no restart, no deploy.</p>
