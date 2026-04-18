@@ -5,4 +5,7 @@
   :depends-on ("hunchentoot" "cl-who")
   :components ((:module "src"
                 :serial t
-                :components ((:file "package") (:file "main")))))
+                :components ((:file "package")
+                             (:file "models")
+                             (:file "storage")
+                             (:file "main")))))
