@@ -19,5 +19,7 @@
            #:cursor-move
            ;; scrollback (5d)
            #:screen-scrollback #:screen-scroll-up
+           ;; event dispatch (5e.1)
+           #:apply-event #:register-event-handler
            ;; sgr parser (5e.4a)
            #:parse-sgr-params))

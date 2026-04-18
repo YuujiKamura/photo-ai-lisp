@@ -115,3 +115,45 @@
             (code-char (+ 65 (mod n 26))))
       (photo-ai-lisp:screen-scroll-up s))
     (is (= 1000 (length (photo-ai-lisp:screen-scrollback s))))))
+
+;;; --- 5e.1: event dispatch + print ---
+
+(test apply-event-print-writes-cell-and-advances-cursor
+  (let* ((s (photo-ai-lisp:make-screen 2 3))
+         (cursor (photo-ai-lisp:screen-cursor s))
+         (cell (photo-ai-lisp:make-cell :fg 2 :bg 4 :bold t)))
+    (setf (photo-ai-lisp:cursor-attrs cursor) cell)
+    (photo-ai-lisp:apply-event s '(:type :print :char #\Q))
+    (let ((written (aref (photo-ai-lisp:screen-buffer s) 0 0)))
+      (is (char= #\Q (photo-ai-lisp:cell-char written)))
+      (is (= 2 (photo-ai-lisp:cell-fg written)))
+      (is (= 4 (photo-ai-lisp:cell-bg written)))
+      (is (eq t (photo-ai-lisp:cell-bold written))))
+    (is (= 0 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 1 (photo-ai-lisp:cursor-col cursor)))))
+
+(test apply-event-print-wraps-at-end-of-row
+  (let* ((s (photo-ai-lisp:make-screen 2 2))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (setf (photo-ai-lisp:cursor-col cursor) 1)
+    (photo-ai-lisp:apply-event s '(:type :print :char #\X))
+    (is (char= #\X (photo-ai-lisp:cell-char (aref (photo-ai-lisp:screen-buffer s) 0 1))))
+    (is (= 1 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 0 (photo-ai-lisp:cursor-col cursor)))))
+
+(test apply-event-print-wraps-and-scrolls-from-bottom-right
+  (let* ((s (photo-ai-lisp:make-screen 2 2))
+         (cursor (photo-ai-lisp:screen-cursor s))
+         (buf (photo-ai-lisp:screen-buffer s)))
+    (setf (photo-ai-lisp:cell-char (aref buf 0 0)) #\A
+          (photo-ai-lisp:cell-char (aref buf 0 1)) #\B
+          (photo-ai-lisp:cell-char (aref buf 1 0)) #\C
+          (photo-ai-lisp:cursor-row cursor) 1
+          (photo-ai-lisp:cursor-col cursor) 1)
+    (photo-ai-lisp:apply-event s '(:type :print :char #\Z))
+    (is (char= #\C (photo-ai-lisp:cell-char (aref buf 0 0))))
+    (is (char= #\Z (photo-ai-lisp:cell-char (aref buf 0 1))))
+    (is (char= #\Space (photo-ai-lisp:cell-char (aref buf 1 0))))
+    (is (= 1 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 0 (photo-ai-lisp:cursor-col cursor)))
+    (is (= 1 (length (photo-ai-lisp:screen-scrollback s))))))
