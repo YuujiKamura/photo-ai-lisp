@@ -366,6 +366,75 @@
       (is (= 7 (photo-ai-lisp:cell-fg attrs)))
       (is (= 0 (photo-ai-lisp:cell-bg attrs))))))
 
+(test apply-event-bs-moves-left-and-clamps-at-zero
+  (let* ((s (photo-ai-lisp:make-screen 1 5))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (setf (photo-ai-lisp:cursor-col cursor) 2)
+    (photo-ai-lisp:apply-event s '(:type :bs))
+    (is (= 1 (photo-ai-lisp:cursor-col cursor)))
+    (photo-ai-lisp:apply-event s '(:type :bs))
+    (photo-ai-lisp:apply-event s '(:type :bs))
+    (is (= 0 (photo-ai-lisp:cursor-col cursor)))))
+
+(test apply-event-cr-resets-column-only
+  (let* ((s (photo-ai-lisp:make-screen 3 5))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (setf (photo-ai-lisp:cursor-row cursor) 2
+          (photo-ai-lisp:cursor-col cursor) 4)
+    (photo-ai-lisp:apply-event s '(:type :cr))
+    (is (= 2 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 0 (photo-ai-lisp:cursor-col cursor)))))
+
+(test apply-event-lf-advances-row-without-changing-column
+  (let* ((s (photo-ai-lisp:make-screen 3 5))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (setf (photo-ai-lisp:cursor-row cursor) 0
+          (photo-ai-lisp:cursor-col cursor) 3)
+    (photo-ai-lisp:apply-event s '(:type :lf))
+    (is (= 1 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 3 (photo-ai-lisp:cursor-col cursor)))))
+
+(test apply-event-lf-scrolls-at-bottom-row
+  (let* ((s (photo-ai-lisp:make-screen 2 3))
+         (buffer (photo-ai-lisp:screen-buffer s))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (setf (aref buffer 0 0) (photo-ai-lisp:make-cell :char #\A)
+          (aref buffer 0 1) (photo-ai-lisp:make-cell :char #\B)
+          (aref buffer 0 2) (photo-ai-lisp:make-cell :char #\C)
+          (aref buffer 1 0) (photo-ai-lisp:make-cell :char #\D)
+          (aref buffer 1 1) (photo-ai-lisp:make-cell :char #\E)
+          (aref buffer 1 2) (photo-ai-lisp:make-cell :char #\F)
+          (photo-ai-lisp:cursor-row cursor) 1
+          (photo-ai-lisp:cursor-col cursor) 2)
+    (photo-ai-lisp:apply-event s '(:type :lf))
+    (is (= 1 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 2 (photo-ai-lisp:cursor-col cursor)))
+    (is (= 1 (length (photo-ai-lisp:screen-scrollback s))))
+    (is (char= #\D (photo-ai-lisp:cell-char (aref buffer 0 0))))
+    (is (char= #\E (photo-ai-lisp:cell-char (aref buffer 0 1))))
+    (is (char= #\F (photo-ai-lisp:cell-char (aref buffer 0 2))))
+    (is (char= #\Space (photo-ai-lisp:cell-char (aref buffer 1 0))))))
+
+(test apply-event-ht-advances-to-next-tab-stop
+  (let* ((s (photo-ai-lisp:make-screen 1 20))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (setf (photo-ai-lisp:cursor-col cursor) 0)
+    (photo-ai-lisp:apply-event s '(:type :ht))
+    (is (= 8 (photo-ai-lisp:cursor-col cursor)))
+    (setf (photo-ai-lisp:cursor-col cursor) 7)
+    (photo-ai-lisp:apply-event s '(:type :ht))
+    (is (= 8 (photo-ai-lisp:cursor-col cursor)))
+    (setf (photo-ai-lisp:cursor-col cursor) 8)
+    (photo-ai-lisp:apply-event s '(:type :ht))
+    (is (= 16 (photo-ai-lisp:cursor-col cursor)))))
+
+(test apply-event-ht-clamps-at-right-edge
+  (let* ((s (photo-ai-lisp:make-screen 1 10))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (setf (photo-ai-lisp:cursor-col cursor) 9)
+    (photo-ai-lisp:apply-event s '(:type :ht))
+    (is (= 9 (photo-ai-lisp:cursor-col cursor)))))
+
 ;;; --- 5f: screen snapshot ---
 
 (test screen->text-on-blank-screen

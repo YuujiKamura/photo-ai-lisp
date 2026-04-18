@@ -117,3 +117,36 @@
           (changes (parse-sgr-params (getf event :attrs))))
      (setf (cursor-attrs cursor)
            (%apply-sgr-changes (copy-cell (cursor-attrs cursor)) changes)))))
+
+(register-event-handler
+ :bs
+ (lambda (screen event)
+   (declare (ignore event))
+   (let ((cursor (screen-cursor screen)))
+     (setf (cursor-col cursor) (max 0 (1- (cursor-col cursor)))))))
+
+(register-event-handler
+ :cr
+ (lambda (screen event)
+   (declare (ignore event))
+   (setf (cursor-col (screen-cursor screen)) 0)))
+
+(register-event-handler
+ :lf
+ (lambda (screen event)
+   (declare (ignore event))
+   (let ((cursor (screen-cursor screen)))
+     (if (< (cursor-row cursor) (1- (screen-rows screen)))
+         (incf (cursor-row cursor))
+         (progn
+           (screen-scroll-up screen)
+           (setf (cursor-row cursor) (1- (screen-rows screen))))))))
+
+(register-event-handler
+ :ht
+ (lambda (screen event)
+   (declare (ignore event))
+   (let* ((cursor (screen-cursor screen))
+          (next-tab (* 8 (1+ (floor (cursor-col cursor) 8)))))
+     (setf (cursor-col cursor)
+           (min next-tab (1- (screen-cols screen)))))))
