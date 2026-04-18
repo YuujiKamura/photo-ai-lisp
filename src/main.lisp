@@ -107,6 +107,7 @@
 
 (defun start (&key (port 8080))
   (unless *acceptor*
+    (load-photos)
     (setf *acceptor* (make-instance 'easy-acceptor :port port))
     (setf (dispatch-table *acceptor*)
           (list (create-prefix-dispatcher "/photo/" #'photo-dispatch)

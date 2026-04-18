@@ -14,4 +14,8 @@ Make the project visible to Quicklisp by cloning or symlinking this repository i
 
 The intended development loop is Viaweb-style live editing: redefine functions from the REPL while the server is running, reload the browser, and immediately see the new behavior without a separate build or deploy step. SLIME, Sly, or Alive all fit this workflow well and make the edit-eval-refresh cycle much more comfortable.
 
+## Persistence
+
+Photos are saved to `~/.photo-ai-lisp/photos.store` via `cl-store` on every mutation. The store is loaded automatically on start. Delete that file to reset the local state.
+
 The code is released under the MIT License. Current status: WIP skeleton.
