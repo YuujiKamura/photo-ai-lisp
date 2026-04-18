@@ -5,147 +5,194 @@ first, then this one.
 
 ## Current state
 
-- `main` is reset to skeleton state (commit `c494ad2`).
-  - `src/package.lisp`, `src/main.lisp` (Hunchentoot hello handler only)
-  - `photo-ai-lisp.asd`, `LICENSE`, `README.md`, `docs/index.html`, `.gitignore`
-  - `LESSONS.md` documents what drifted and should not be repeated
-- `archive/2026-04-18-drift-snapshot` holds the full drift-era code
-  (agent embed, tools, pipeline, CI workflow, 41 tests). Treat it as a
-  cherry-pick source, not as reference architecture.
+- `main` is past the skeleton; Steps A, B, and C are landed.
+  - `docs/skill-cli.md` — real probed CLI shape for each photo-* skill
+  - `.github/workflows/test.yml` — CI restored
+  - `src/agent.lisp` — minimal agent subprocess (`claude -p` one-shot model)
+  - `tests/agent-scenario.lisp` — scenario test that spawns real `claude`
+- `archive/2026-04-18-drift-snapshot` holds the earlier drift-era code
+  for reference.
 
-## Target direction
+## Target direction (revised)
 
-Lisp is the orchestrator. The browser terminal is the existing
-ghostty-web binary, talked to over its CP protocol. The agent CLI
-(claude / gemini / codex) is a subprocess whose stdin/stdout the Lisp
-server brokers. Skills (`~/.agents/skills/photo-*/`) and the Rust
-exporter binary stay as external processes; Lisp only invokes them
-after their real CLI shape is probed.
+Port ghostty-web to Common Lisp. The terminal emulator itself becomes
+a Lisp codebase, not a Go binary we shell out to. The point is to
+actually use Lisp for the hard parts instead of gluing two ecosystems
+together.
 
 ```
 Browser
-  └─ ghostty-web (xterm rendering)
-        ↕ CP protocol
-   photo-ai-lisp (Hunchentoot)
-        ↕ uiop:launch-program
-    agent CLI (claude / gemini / codex)
-        ↕ tool call
-    PhotoAISkills (Python) + Rust binary
+  └─ xterm.js (kept for glyph rendering only)
+        ↕ WebSocket (hunchensocket)
+   photo-ai-lisp (Hunchentoot + Lisp terminal emulator)
+        ↕ PTY (ConPTY on Windows via CFFI, pty on Unix)
+    child process (bash / cmd / claude / …)
 ```
+
+The Lisp side owns:
+
+- WebSocket endpoint and message protocol
+- PTY spawn/resize/kill
+- ANSI / VT100 / ECMA-48 escape-sequence parser
+- Screen buffer (grid of cells, cursor, attributes, scrollback)
+- CP (Control Plane) protocol for external tools to inject input
+  and observe output programmatically
+
+xterm.js stays on the browser side only as the glyph / input
+surface. Everything else moves into Lisp.
+
+Reference source: `C:\Users\yuuji\ghostty-web\` (Go implementation,
+existing CP protocol). Read it for protocol shape, do not shell it
+out.
 
 ## Do-next, in order
 
-Each step ends with a committed, pushed change on `main`, and no
-subsequent step starts until the previous one is green.
+Each phase ends with a committed, pushed change on `main`. No
+subsequent phase starts until the previous one is green and a
+screenshot or log proves the stated behavior.
 
-### Step A: probe real skill CLI shape
+### Phase 1 — WebSocket echo loop
 
-Before any Lisp wrapper is written, run each skill manually and
-record the actual CLI contract.
+- Add `hunchensocket` to `photo-ai-lisp.asd` depends-on.
+- Serve a page at `/term` with xterm.js linked from a CDN.
+- Open a WebSocket from the page to `/ws/echo`.
+- Every byte the browser sends over the socket, echo back verbatim.
+- User types `hello` in xterm, sees `hello` appear (echoed).
+- No subprocess, no PTY, no ANSI parsing — just prove the socket
+  plumbing works.
 
-- For each directory under `~/.agents/skills/photo-*/`, find the
-  scripts directory (not always `scripts/`, not always `.py`). Run
-  the entry point with `--help` and `-h`, capture stdout / stderr.
-- Write `docs/skill-cli.md` recording, per skill: command, required
-  args, optional flags, output channel (stdout JSON vs file), exit
-  codes, any environment assumptions.
-- Do not invent flags. If a skill has no `--help`, document the
-  unknown state.
+Commit: `feat(term): phase 1 — websocket echo through xterm.js`.
 
-Commit: `docs: probe actual PhotoAISkills CLI shape`.
+### Phase 2 — Pipe subprocess stdio through the socket
 
-### Step B: bring back CI
+- When a client connects to `/ws/shell`, Lisp spawns a subprocess
+  (default `cmd.exe` on Windows, `/bin/bash` on Unix) via
+  `uiop:launch-program` with plain stdin/stdout pipes — **not a PTY
+  yet**.
+- Forward WebSocket → process stdin, process stdout → WebSocket.
+- Expect broken interactivity (no TTY). That is fine; the point of
+  this phase is to prove bidirectional piping works before tackling
+  PTY.
 
-Cherry-pick `.github/workflows/test.yml` from
-`archive/2026-04-18-drift-snapshot`, adapted to the current
-minimal codebase. Expect zero tests to run for now; the job should
-still succeed (load the system and exit 0).
+Commit: `feat(term): phase 2 — subprocess stdio over websocket`.
 
-Commit: `ci: restore GitHub Actions workflow for main`.
+### Phase 3 — Real PTY
 
-### Step C: minimal agent subprocess
+- Write a `src/pty.lisp` module that opens a pseudo-terminal.
+  - On Windows: CFFI bindings to ConPTY (`CreatePseudoConsole`,
+    `ResizePseudoConsole`, `ClosePseudoConsole`, overlapped IO).
+  - On Unix: `cl-pty` or direct `forkpty` CFFI wrapper.
+- Replace Phase 2 plumbing with PTY reads/writes.
+- Support resize: WebSocket `resize` message → `ResizePseudoConsole`
+  (or `TIOCSWINSZ`).
+- Run `bash` / `cmd` interactively in the browser. Curses apps
+  (for example `htop` where available, or `vim`) should render at
+  least cursor movement correctly even without the ANSI parser,
+  because xterm.js parses the escape sequences.
 
-Port `src/agent.lisp` from the archive branch, trimmed to just
-`*agent-command*`, `*agent-args*`, `start-agent`, `stop-agent`,
-`agent-alive-p`, and `agent-send`. Drop the restart monitor for now.
-Add one scenario test (not unit test) that:
+Commit: `feat(term): phase 3 — PTY backend`.
 
-- spawns the configured agent command (default: real `claude`)
-- sends a trivial prompt
-- asserts a non-empty response within 30 seconds
+### Phase 4 — In-Lisp ANSI parser
 
-If `claude` is not installed the test skips. Do not use `cat` as a
-fake agent — that proved useless last time.
+- Add `src/ansi.lisp` that implements an ECMA-48 / VT100 parser
+  state machine.
+- Start narrow: CSI sequences for cursor move, SGR for colors and
+  attributes, and basic OSC. Skip DCS and exotic modes initially.
+- The parser emits events (`:print CHAR`, `:cursor-move ROW COL`,
+  `:set-attr ...`, `:erase ...`) that a consumer can translate into
+  screen updates.
+- Unit-test the parser against a small corpus of known sequences —
+  this is pure data, safe to unit-test.
 
-Commit: `feat: minimal agent subprocess lifecycle with scenario test`.
+Commit: `feat(term): phase 4 — ANSI parser in Lisp`.
 
-### Step D: ghostty-web embedding
+### Phase 5 — Screen buffer model
 
-Figure out how to embed ghostty-web in a page served by Hunchentoot,
-using its CP protocol for the bidirectional pipe. This step is
-research-heavy:
+- `src/screen.lisp`: grid of cells, cursor, scrollback ring, line
+  wrap, tab stops. Apply parser events to mutate the screen.
+- Snapshot API: `(screen->text)` and `(screen->html)` for debugging
+  and for the CP protocol to query state without a browser.
 
-- Read ghostty-web's CP protocol docs / source
-  (`project_ghostty_web_cp.md` in memory points to commit 7439e5d)
-- Stand up ghostty-web locally and confirm you can render a terminal
-  driven by a trivial Lisp-managed subprocess (e.g. `echo hi`)
-- Only then wire the agent subprocess through
+Commit: `feat(term): phase 5 — screen buffer with scrollback`.
 
-No commit until a browser actually renders a live terminal driven by
-a Lisp-side process. Screenshot that browser, land it in `docs/`.
+### Phase 6 — CP protocol
 
-Commit: `feat: embed ghostty-web terminal backed by Lisp CP broker`.
+- WebSocket message types for external (non-browser) clients:
+  - `input TEXT` — push keystrokes as if typed.
+  - `snapshot` — request current screen state, reply JSON.
+  - `run COMMAND` — convenience: send command + newline + wait for
+    prompt signal.
+  - `resize COLS ROWS`, `kill`, `spawn`.
+- Lisp-side API: `(cp-send-input session text)`,
+  `(cp-snapshot session)`, etc. The agent subprocess from Step C can
+  now drive the same terminal a human is watching.
 
-### Step E: skill tool plumbing
+Commit: `feat(term): phase 6 — CP protocol for external clients`.
 
-With the real CLI shapes from Step A, implement `src/skills.lisp`
-fresh. One function per skill, with argument names matching the
-actual CLI. No generic `run-skill` — the generic version encouraged
-guessing. Write a scenario test per skill that runs against real
-files in a temp directory.
+### Phase 7 — Wire the agent through the terminal
 
-Commit: `feat: typed skill wrappers backed by probed CLI contracts`.
+- `claude -p` is still stdin/stdout, but now its stdout can be piped
+  into a CP session so the browser sees it render through the full
+  stack.
+- Photo-oriented skill wrappers (originally Steps E/F) come back as
+  tool calls the agent makes; their stdout shows up in the terminal
+  too.
 
-### Step F: agent tools
+Commit: `feat(agent): run claude through the Lisp terminal`.
 
-Expose the skill wrappers as tools to the agent. Format depends on
-which agent backend is used; keep it adapter-shaped so switching
-backends is a single module change.
+## Deferred until after Phase 7
 
-Commit: `feat: agent tool bridge for skill invocation`.
+- `src/skills.lisp` typed wrappers (was Step E). Blocked on the
+  terminal being real; otherwise the wrappers can be built but not
+  observed.
+- Agent tool bridge with JSON schemas (was Step F).
+- Landing page / README rewrites to describe the terminal emulator.
+- Public hosting of any kind. This emulator will spawn arbitrary
+  processes; it stays localhost-only forever unless an authz layer
+  is built first.
 
 ## Non-goals for this pass
 
-- REPL front page (the drift-era `/eval` endpoint)
-- Upload / Scan / Manifest / Pipeline HTTP routes beyond what ghostty-web itself shows
-- Unit tests for imagined APIs
-- Landing page copy revisions before the architecture is solid
-- Multi-agent dispatcher pipelines. One Claude session does the
-  work top to bottom; nothing gets dispatched to a child agent.
-- `cat`-based fake agents
+- Re-implementing ghostty-web's Go frontend server as a Go-to-Lisp
+  transpilation. Read its design, then write idiomatic Common Lisp.
+- Full VT220 / VT520 emulation. Aim for a subset that covers
+  `bash`, `cmd`, `claude`, and curses-light programs.
+- Performance tuning before correctness. 60 FPS is not a goal;
+  `htop` at 4 FPS is fine for Phase 3.
+- True mouse support, bracketed paste, Sixel graphics. Deferred
+  indefinitely.
+- A second terminal emulator implementation in the archive branch.
+  If it turns out the Lisp emulator is too large, fall back to the
+  "pure Lisp chat UI" option discussed in the conversation and
+  record that decision here — do not silently depend on ghostty-web
+  again.
 
 ## Operating constraints
 
-- Do not invent CLI flags for external tools.
-- Do not write a Lisp wrapper before calling the underlying binary
-  by hand.
-- Run the system at every step. `(ql:quickload :photo-ai-lisp)` and
-  the scenario test must stay green.
-- After each commit, `git push origin main` and verify GitHub
-  Actions turns green (once Step B is done).
-- If you introduce a new HTTP route, exercise it in a browser
-  before the commit.
-- If you get stuck for more than 20 minutes, stop and write what is
-  unknown into `HANDOVER.md` before doing anything else.
+- Do not start Phase N before Phase N-1 is committed, pushed, and
+  CI is green.
+- Do not add a feature without an observable demonstration — a
+  screenshot, a curl trace, or a test log that proves it.
+- Do not invent API surface from imagination. Read ghostty-web's
+  source for reference shapes, then decide what Lisp-idiomatic
+  version you want.
+- Do not let AI executors invent CFFI signatures. ConPTY in
+  particular has subtle overlapped-IO requirements; consult
+  Microsoft's official docs and real working examples before
+  writing the binding.
+- If stuck more than 20 minutes on a single phase, stop and
+  append what is unknown to this file before doing anything else.
+- One Claude session does the work top to bottom. No dispatcher
+  chains.
 
 ## Environment reminders
 
 - SBCL at `C:/Users/yuuji/SBCLLocal/PFiles/Steel Bank Common Lisp/sbcl.exe`
 - Quicklisp at `~/quicklisp/`, project symlinked at
   `~/quicklisp/local-projects/photo-ai-lisp/`
-- Rust exporter at
-  `C:/Users/yuuji/exporters/target/release/photo-ai-rust.exe`
-- Skills at `~/.agents/skills/photo-*/`
+- ghostty-web reference source at `C:/Users/yuuji/ghostty-web/`
+- ConPTY header: `wincon.h` in the Windows SDK
+- Skills at `~/.agents/skills/photo-*/` (parked until Phase 7)
 - Windows + Git Bash shell. Use `uiop:os-windows-p` for any
   platform-sensitive branch.
 
