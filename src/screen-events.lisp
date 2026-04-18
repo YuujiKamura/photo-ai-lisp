@@ -19,6 +19,50 @@
                  to (if (= row end-row) end-col (1- (screen-cols screen)))
                  do (%reset-cell-at screen row col))))
 
+(defun %default-fg () 7)
+
+(defun %default-bg () 0)
+
+(defun %apply-sgr-changes (cell changes)
+  (loop while changes
+        for key = (pop changes)
+        for value = (pop changes)
+        do (case key
+             (:reset
+              (setf cell (make-cell)))
+             (:bold
+              (setf (cell-bold cell) (eq value t)))
+             (:underline
+              (setf (cell-underline cell) (eq value t)))
+             (:reverse
+              (setf (cell-reverse cell) (eq value t)))
+             (:fg
+              (let* ((bright (and changes
+                                  (eq (first changes) :bright)
+                                  (eq (second changes) t)))
+                     (fg (cond
+                           ((eq value :default) (%default-fg))
+                           ((and bright (integerp value)) (+ 8 value))
+                           (t value))))
+                (setf (cell-fg cell) fg)
+                (when bright
+                  (pop changes)
+                  (pop changes))))
+             (:bg
+              (let* ((bright (and changes
+                                  (eq (first changes) :bright)
+                                  (eq (second changes) t)))
+                     (bg (cond
+                           ((eq value :default) (%default-bg))
+                           ((and bright (integerp value)) (+ 8 value))
+                           (t value))))
+                (setf (cell-bg cell) bg)
+                (when bright
+                  (pop changes)
+                  (pop changes))))
+             (:bright nil)))
+  cell)
+
 (register-event-handler
  :cursor-move
  (lambda (screen event)
@@ -65,3 +109,11 @@
        (0 (%erase-range screen row col row (1- (screen-cols screen))))
        (1 (%erase-range screen row 0 row col))
        (2 (%erase-range screen row 0 row (1- (screen-cols screen))))))))
+
+(register-event-handler
+ :set-attr
+ (lambda (screen event)
+   (let* ((cursor (screen-cursor screen))
+          (changes (parse-sgr-params (getf event :attrs))))
+     (setf (cursor-attrs cursor)
+           (%apply-sgr-changes (copy-cell (cursor-attrs cursor)) changes)))))

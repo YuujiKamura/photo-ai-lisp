@@ -305,6 +305,67 @@
     (is (char= #\A (photo-ai-lisp:cell-char (aref buffer 0 0))))
     (is (char= #\A (photo-ai-lisp:cell-char (aref buffer 0 3))))))
 
+(test apply-event-set-attr-updates-cursor-attrs-for-future-print
+  (let* ((s (photo-ai-lisp:make-screen 1 2))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (photo-ai-lisp:apply-event s '(:type :set-attr :attrs (1 4 7 31 42)))
+    (let ((attrs (photo-ai-lisp:cursor-attrs cursor)))
+      (is (eq t (photo-ai-lisp:cell-bold attrs)))
+      (is (eq t (photo-ai-lisp:cell-underline attrs)))
+      (is (eq t (photo-ai-lisp:cell-reverse attrs)))
+      (is (= 1 (photo-ai-lisp:cell-fg attrs)))
+      (is (= 2 (photo-ai-lisp:cell-bg attrs)))))
+  (let ((s (photo-ai-lisp:make-screen 1 2)))
+    (photo-ai-lisp:apply-event s '(:type :set-attr :attrs (1 31)))
+    (photo-ai-lisp:apply-event s '(:type :print :char #\X))
+    (let ((cell (aref (photo-ai-lisp:screen-buffer s) 0 0)))
+      (is (char= #\X (photo-ai-lisp:cell-char cell)))
+      (is (eq t (photo-ai-lisp:cell-bold cell)))
+      (is (= 1 (photo-ai-lisp:cell-fg cell))))))
+
+(test apply-event-set-attr-reset-restores-default-cursor-attrs
+  (let* ((s (photo-ai-lisp:make-screen 1 1))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (photo-ai-lisp:apply-event s '(:type :set-attr :attrs (1 4 7 31 42)))
+    (photo-ai-lisp:apply-event s '(:type :set-attr :attrs (0)))
+    (let ((attrs (photo-ai-lisp:cursor-attrs cursor)))
+      (is (null (photo-ai-lisp:cell-bold attrs)))
+      (is (null (photo-ai-lisp:cell-underline attrs)))
+      (is (null (photo-ai-lisp:cell-reverse attrs)))
+      (is (= 7 (photo-ai-lisp:cell-fg attrs)))
+      (is (= 0 (photo-ai-lisp:cell-bg attrs))))))
+
+(test apply-event-set-attr-resets-individual-flags-and-default-colors
+  (let* ((s (photo-ai-lisp:make-screen 1 1))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (photo-ai-lisp:apply-event s '(:type :set-attr :attrs (1 4 7 31 42)))
+    (photo-ai-lisp:apply-event s '(:type :set-attr :attrs (22 24 27 39 49)))
+    (let ((attrs (photo-ai-lisp:cursor-attrs cursor)))
+      (is (null (photo-ai-lisp:cell-bold attrs)))
+      (is (null (photo-ai-lisp:cell-underline attrs)))
+      (is (null (photo-ai-lisp:cell-reverse attrs)))
+      (is (= 7 (photo-ai-lisp:cell-fg attrs)))
+      (is (= 0 (photo-ai-lisp:cell-bg attrs))))))
+
+(test apply-event-set-attr-applies-bright-colors
+  (let* ((s (photo-ai-lisp:make-screen 1 1))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (photo-ai-lisp:apply-event s '(:type :set-attr :attrs (91 104)))
+    (let ((attrs (photo-ai-lisp:cursor-attrs cursor)))
+      (is (= 9 (photo-ai-lisp:cell-fg attrs)))
+      (is (= 12 (photo-ai-lisp:cell-bg attrs))))))
+
+(test apply-event-set-attr-ignores-unsupported-sgr-params
+  (let* ((s (photo-ai-lisp:make-screen 1 1))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (photo-ai-lisp:apply-event s '(:type :set-attr :attrs (2 3 8 99)))
+    (let ((attrs (photo-ai-lisp:cursor-attrs cursor)))
+      (is (null (photo-ai-lisp:cell-bold attrs)))
+      (is (null (photo-ai-lisp:cell-underline attrs)))
+      (is (null (photo-ai-lisp:cell-reverse attrs)))
+      (is (= 7 (photo-ai-lisp:cell-fg attrs)))
+      (is (= 0 (photo-ai-lisp:cell-bg attrs))))))
+
 ;;; --- 5f: screen snapshot ---
 
 (test screen->text-on-blank-screen
