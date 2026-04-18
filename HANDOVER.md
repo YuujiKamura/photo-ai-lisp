@@ -1,199 +1,175 @@
-# Handover — 2026-04-18 evening
+# Handover — 2026-04-18 night (Phase 5 wrap-up)
 
-This file is the starting point for the next session. Read `LESSONS.md`
-first, then this one.
+Read this first, then `LESSONS.md`. Previous handover is in git history.
 
-## Current state
+## TL;DR
 
-- `main` is past the skeleton; Steps A, B, and C are landed.
-  - `docs/skill-cli.md` — real probed CLI shape for each photo-* skill
-  - `.github/workflows/test.yml` — CI restored
-  - `src/agent.lisp` — minimal agent subprocess (`claude -p` one-shot model)
-  - `tests/agent-scenario.lisp` — scenario test that spawns real `claude`
-- `archive/2026-04-18-drift-snapshot` holds the earlier drift-era code
-  for reference.
+Phase 5 (screen + html + handlers) is **12/12 atoms landed** on
+`track-b/ansi-parser` (HEAD: `8dd9318`). But there is a **test loader
+regression** that makes `(asdf:test-system :photo-ai-lisp/tests)` only
+exercise 49 of ~270 expected checks. SCREEN-SCENARIO and SGR-TESTS
+suites never register. Fix that first, then merge to `main`.
 
-## Target direction (revised)
+## What landed in Phase 5
 
-Port ghostty-web to Common Lisp. The terminal emulator itself becomes
-a Lisp codebase, not a Go binary we shell out to. The point is to
-actually use Lisp for the hard parts instead of gluing two ecosystems
-together.
+`track-b/ansi-parser` log (newest first):
 
 ```
-Browser
-  └─ xterm.js (kept for glyph rendering only)
-        ↕ WebSocket (hunchensocket)
-   photo-ai-lisp (Hunchentoot + Lisp terminal emulator)
-        ↕ PTY (ConPTY on Windows via CFFI, pty on Unix)
-    child process (bash / cmd / claude / …)
+8dd9318 feat(screen): 5h — integration scenario + cr/lf handlers
+e426c6d feat(screen): 5g — screen->html with attr span runs
+eef5b12 feat(screen): 5e.5 — simple controls with scroll-on-lf
+59c2917 feat(screen): 5e.4b — apply SGR to cursor attrs
+8c6fb24 feat(screen): 5e.3 — erase-display and erase-line
+07237a3 feat(screen): 5e.2 — cursor-move and cursor-position
+9978ef0 feat(screen): 5f  screen->text snapshot
+c8dbde5 feat(screen): 5e.1  apply-event dispatcher + :print handler
+7143e57 feat(screen): 5d  scrollback ring capped at 1000
+7b752cf feat(screen): 5c  cursor model with clamped movement
+52c5bf6 feat(screen): 5b — screen grid + infra fixes
+e5e1b6e Merge track-b/5e4a-sgr-parse: pure SGR param parser
+e06603c feat(screen): 5a — cell struct with defaults, copy, equal tests
 ```
 
-The Lisp side owns:
+Source layout the suite produced:
 
-- WebSocket endpoint and message protocol
-- PTY spawn/resize/kill
-- ANSI / VT100 / ECMA-48 escape-sequence parser
-- Screen buffer (grid of cells, cursor, attributes, scrollback)
-- CP (Control Plane) protocol for external tools to inject input
-  and observe output programmatically
+- `src/screen.lisp` — cell struct, screen grid, cursor, scrollback,
+  `register-event-handler` / `apply-event`, `:print`/`:cr`/`:lf` handlers
+- `src/screen-events.lisp` — handlers for cursor-move, cursor-position,
+  erase-display, erase-line, set-attr, simple controls
+- `src/sgr.lisp` — pure SGR param parser
+- `src/screen-html.lisp` — `screen->html` with attribute span runs
+- `tests/screen-tests.lisp` (41 deftests)
+- `tests/screen-scenario.lisp` (1 integration deftest — Hello\r\nWorld)
+- `tests/sgr-tests.lisp` (35 deftests)
+- `tests/ansi-tests.lisp` (9 deftests)
 
-xterm.js stays on the browser side only as the glyph / input
-surface. Everything else moves into Lisp.
+## The blocker — test loader regression
 
-Reference source: `C:\Users\yuuji\ghostty-web\` (Go implementation,
-existing CP protocol). Read it for protocol shape, do not shell it
-out.
+**Symptom.** Both `(asdf:test-system :photo-ai-lisp/tests)` and
+`(5am:run-all-tests)` print only:
 
-## Do-next, in order
+```
+Running test suite ANSI-TESTS
+Running test suite SCREEN-TESTS
+  Running test CELL-DEFAULTS .....
+  Running test CELL-COPY ....
+  Running test CELL-EQUAL ..
+ Running test AGENT-SENDS-PROMPT-AND-GETS-RESPONSE ..
+Did 49 checks. Pass: 49 (100%)
+```
 
-Each phase ends with a committed, pushed change on `main`. No
-subsequent phase starts until the previous one is green and a
-screenshot or log proves the stated behavior.
+Expected: ~270 checks across ANSI-TESTS (9), SCREEN-TESTS (41),
+SCREEN-SCENARIO (1), SGR-TESTS (35), agent-scenario (1).
 
-### Phase 1 — WebSocket echo loop
+What is missing:
 
-- Add `hunchensocket` to `photo-ai-lisp.asd` depends-on.
-- Serve a page at `/term` with xterm.js linked from a CDN.
-- Open a WebSocket from the page to `/ws/echo`.
-- Every byte the browser sends over the socket, echo back verbatim.
-- User types `hello` in xterm, sees `hello` appear (echoed).
-- No subprocess, no PTY, no ANSI parsing — just prove the socket
-  plumbing works.
+1. SCREEN-TESTS only runs the first 3 deftests (CELL-DEFAULTS,
+   CELL-COPY, CELL-EQUAL) — the remaining 38 are silently absent.
+2. SGR-TESTS suite never starts. `tests/sgr-tests.lisp` defines
+   `(def-suite sgr-tests :in photo-ai-lisp-tests)` and 35 deftests —
+   none register.
+3. SCREEN-SCENARIO test (the new 5h integration test in
+   `tests/screen-scenario.lisp`, registered with
+   `(in-suite photo-ai-lisp-tests)`) never runs.
 
-Commit: `feat(term): phase 1 — websocket echo through xterm.js`.
+**No errors are printed.** Exit code is 0. Compile is silent.
 
-### Phase 2 — Pipe subprocess stdio through the socket
+Note: The previous run shown in the (now-deleted) `sbcl-test.log` at
+21:02 reported 267 checks — meaning at some prior point the loader
+*was* working. The regression is not from 5h itself; it predates 5h.
 
-- When a client connects to `/ws/shell`, Lisp spawns a subprocess
-  (default `cmd.exe` on Windows, `/bin/bash` on Unix) via
-  `uiop:launch-program` with plain stdin/stdout pipes — **not a PTY
-  yet**.
-- Forward WebSocket → process stdin, process stdout → WebSocket.
-- Expect broken interactivity (no TTY). That is fine; the point of
-  this phase is to prove bidirectional piping works before tackling
-  PTY.
+**Hypotheses (not verified) — start here:**
 
-Commit: `feat(term): phase 2 — subprocess stdio over websocket`.
+- `tests/package.lisp` may be missing exports / suite forward-decls
+  that `sgr-tests.lisp` and `screen-scenario.lisp` need at load time.
+  Check whether SGR-TESTS is even *defined* in the running image
+  after `(asdf:load-system :photo-ai-lisp/tests)`.
+- ASDF may be reusing a stale FASL of `tests/screen-tests.lisp` from
+  before the file grew past 3 deftests. Force `(asdf:operate
+  'asdf:compile-bundle-op :photo-ai-lisp/tests :force t)` or wipe the
+  Windows ASDF cache (lives under `~/AppData/Local/cache/common-lisp/`,
+  not `~/.cache/`).
+- The `eef5b12` (5e.5) commit added the `screen-events` file in the
+  middle of the `:components` list; double-check `photo-ai-lisp.asd`
+  puts `screen` before `screen-events` before `sgr` before
+  `screen-html`. The 5h commit also has CRLF churn on those lines —
+  rule out an editor that broke the form.
 
-### Phase 3 — Real PTY
+**Verification command** once fixed:
 
-- Write a `src/pty.lisp` module that opens a pseudo-terminal.
-  - On Windows: CFFI bindings to ConPTY (`CreatePseudoConsole`,
-    `ResizePseudoConsole`, `ClosePseudoConsole`, overlapped IO).
-  - On Unix: `cl-pty` or direct `forkpty` CFFI wrapper.
-- Replace Phase 2 plumbing with PTY reads/writes.
-- Support resize: WebSocket `resize` message → `ResizePseudoConsole`
-  (or `TIOCSWINSZ`).
-- Run `bash` / `cmd` interactively in the browser. Curses apps
-  (for example `htop` where available, or `vim`) should render at
-  least cursor movement correctly even without the ANSI parser,
-  because xterm.js parses the escape sequences.
+```bash
+cd ~/photo-ai-lisp-track-b
+'/c/Users/yuuji/SBCLLocal/PFiles/Steel Bank Common Lisp/sbcl.exe' \
+  --non-interactive \
+  --eval "(require 'asdf)" \
+  --eval "(asdf:test-system :photo-ai-lisp/tests)"
+```
 
-Commit: `feat(term): phase 3 — PTY backend`.
+Expected: ~270 checks, 0 fail, including
+`SCREEN-SCENARIO-HELLO-WORLD-VIA-PARSER`.
 
-### Phase 4 — In-Lisp ANSI parser
+## Next-team mission (in order)
 
-- Add `src/ansi.lisp` that implements an ECMA-48 / VT100 parser
-  state machine.
-- Start narrow: CSI sequences for cursor move, SGR for colors and
-  attributes, and basic OSC. Skip DCS and exotic modes initially.
-- The parser emits events (`:print CHAR`, `:cursor-move ROW COL`,
-  `:set-attr ...`, `:erase ...`) that a consumer can translate into
-  screen updates.
-- Unit-test the parser against a small corpus of known sequences —
-  this is pure data, safe to unit-test.
+1. **Fix test loader.** All 4 suites must register and run. Threshold:
+   ≥ 270 passing checks, 0 fail. No skip. (Do NOT delete tests to make
+   the loader green — the tests are the spec.)
+2. **Confirm 5h passes** under the now-working loader. The scenario
+   feeds `Hello\r\nWorld` through `make-parser` →
+   `parser-feed-string` → `apply-event` → `screen->text` and asserts
+   the snapshot contains both strings. If it fails, the bug is in the
+   :cr / :lf handler interaction with the `:print` handler — note
+   that 5h registered duplicate :cr/:lf handlers in `src/screen.lisp`
+   (5e.5 already had them in `src/screen-events.lisp`); the duplicate
+   is harmless (last-write-wins in the hash table) but should be
+   collapsed into one location during the fix.
+3. **Merge `track-b/ansi-parser` → `main`** once verified. Branch is
+   on fork only; no upstream concerns.
+4. **Phase 6 + 7.** See `BACKLOG.md` for the parallel-safe atoms
+   already broken down. Same orchestration model: spine session +
+   handlers session + Codex worker.
 
-Commit: `feat(term): phase 4 — ANSI parser in Lisp`.
+## Hygiene to clean up while you're in there
 
-### Phase 5 — Screen buffer model
+- `photo-ai-lisp.asd` 5h commit included CRLF/LF line-ending churn on
+  `screen-events` / `screen-html` lines. Normalize.
+- `html` is a 0-byte file in repo root left behind by an experimental
+  `screen->html` write. Delete and `.gitignore`.
+- `sbcl-test.log` is a transient. `.gitignore` `*-test.log`.
 
-- `src/screen.lisp`: grid of cells, cursor, scrollback ring, line
-  wrap, tab stops. Apply parser events to mutate the screen.
-- Snapshot API: `(screen->text)` and `(screen->html)` for debugging
-  and for the CP protocol to query state without a browser.
+## Orchestration state at handover time
 
-Commit: `feat(term): phase 5 — screen buffer with scrollback`.
+- `track-b/ansi-parser` is up to date on `origin` (fork:
+  `YuujiKamura/photo-ai-lisp`). `main` is behind by Phase 5.
+- Deckpilot sessions `ghostty-37928` (spine), `ghostty-38136`
+  (handlers), `ghostty-36224` (Codex), `ghostty-15524` (Codex relief)
+  were all stuck in display-only "Working …" states by the end of the
+  Phase 5 race. Their work is fully harvested into `8dd9318`. Kill
+  them on the next session start; do not try to resume.
+- `ghostty-win` itself crashed with `EXCEPTION 0x80000003` in
+  `App.zig:1375 nci.close()` during `fullCleanup` when deckpilot tried
+  to spawn a new session. Unrelated to photo-ai-lisp; reproduce
+  standalone in ghostty-win project before the next deckpilot run.
 
-### Phase 6 — CP protocol
+## Race lessons (file these in LESSONS.md)
 
-- WebSocket message types for external (non-browser) clients:
-  - `input TEXT` — push keystrokes as if typed.
-  - `snapshot` — request current screen state, reply JSON.
-  - `run COMMAND` — convenience: send command + newline + wait for
-    prompt signal.
-  - `resize COLS ROWS`, `kill`, `spawn`.
-- Lisp-side API: `(cp-send-input session text)`,
-  `(cp-snapshot session)`, etc. The agent subprocess from Step C can
-  now drive the same terminal a human is watching.
+- "267 tests passing" in a worker's log is not proof. Always re-run
+  the full suite from a clean shell before declaring a milestone done.
+  In this race the workers reported green for 5g, but the same loader
+  has been silently dropping ~80% of tests for an unknown number of
+  commits.
+- Codex sessions can sit at "Working …" for 15+ minutes after the
+  underlying shell has already exited (PowerShell `tee`-based wrapper
+  in particular). Use the test log file mtime, not the agent's UI
+  state, to decide whether work is still in flight.
+- Two parallel Codex workers on the same FASL cache will produce
+  ambiguous "Working" indicators while not actually competing for
+  work. One worker per cache scope.
 
-Commit: `feat(term): phase 6 — CP protocol for external clients`.
+## Reference
 
-### Phase 7 — Wire the agent through the terminal
-
-- `claude -p` is still stdin/stdout, but now its stdout can be piped
-  into a CP session so the browser sees it render through the full
-  stack.
-- Photo-oriented skill wrappers (originally Steps E/F) come back as
-  tool calls the agent makes; their stdout shows up in the terminal
-  too.
-
-Commit: `feat(agent): run claude through the Lisp terminal`.
-
-## Deferred until after Phase 7
-
-- `src/skills.lisp` typed wrappers (was Step E). Blocked on the
-  terminal being real; otherwise the wrappers can be built but not
-  observed.
-- Agent tool bridge with JSON schemas (was Step F).
-- Landing page / README rewrites to describe the terminal emulator.
-- Public hosting of any kind. This emulator will spawn arbitrary
-  processes; it stays localhost-only forever unless an authz layer
-  is built first.
-
-## Non-goals for this pass
-
-- Re-implementing ghostty-web's Go frontend server as a Go-to-Lisp
-  transpilation. Read its design, then write idiomatic Common Lisp.
-- Full VT220 / VT520 emulation. Aim for a subset that covers
-  `bash`, `cmd`, `claude`, and curses-light programs.
-- Performance tuning before correctness. 60 FPS is not a goal;
-  `htop` at 4 FPS is fine for Phase 3.
-- True mouse support, bracketed paste, Sixel graphics. Deferred
-  indefinitely.
-- A second terminal emulator implementation in the archive branch.
-  If it turns out the Lisp emulator is too large, fall back to the
-  "pure Lisp chat UI" option discussed in the conversation and
-  record that decision here — do not silently depend on ghostty-web
-  again.
-
-## Operating constraints
-
-- Do not start Phase N before Phase N-1 is committed, pushed, and
-  CI is green.
-- Do not add a feature without an observable demonstration — a
-  screenshot, a curl trace, or a test log that proves it.
-- Do not invent API surface from imagination. Read ghostty-web's
-  source for reference shapes, then decide what Lisp-idiomatic
-  version you want.
-- Do not let AI executors invent CFFI signatures. ConPTY in
-  particular has subtle overlapped-IO requirements; consult
-  Microsoft's official docs and real working examples before
-  writing the binding.
-- If stuck more than 20 minutes on a single phase, stop and
-  append what is unknown to this file before doing anything else.
-- One Claude session does the work top to bottom. No dispatcher
-  chains.
-
-## Environment reminders
-
-- SBCL at `C:/Users/yuuji/SBCLLocal/PFiles/Steel Bank Common Lisp/sbcl.exe`
-- Quicklisp at `~/quicklisp/`, project symlinked at
-  `~/quicklisp/local-projects/photo-ai-lisp/`
-- ghostty-web reference source at `C:/Users/yuuji/ghostty-web/`
-- ConPTY header: `wincon.h` in the Windows SDK
-- Skills at `~/.agents/skills/photo-*/` (parked until Phase 7)
-- Windows + Git Bash shell. Use `uiop:os-windows-p` for any
-  platform-sensitive branch.
-
-Good luck.
+- `LESSONS.md` — design decisions (CP protocol, why no go binary, etc.)
+- `BACKLOG.md` — Phases 2–7 atomic task breakdown
+- `docs/3bst-reference.md` — terminal scrollback semantics reference
+  used by the 5e family
+- `docs/skill-cli.md` — probed CLI shape per photo-* skill
+- `~/reference/3bst/` — full reference implementation tree
