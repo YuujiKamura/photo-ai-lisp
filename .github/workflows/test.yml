@@ -39,10 +39,11 @@ jobs:
           mkdir -p ~/quicklisp/local-projects
           ln -sfn "$GITHUB_WORKSPACE" ~/quicklisp/local-projects/photo-ai-lisp
 
-      - name: Load system
+      - name: Run tests
         run: |
           sbcl --non-interactive \
                --load ~/quicklisp/setup.lisp \
+               --eval '(ql:quickload :fiveam :silent t)' \
                --eval '(ql:quickload :photo-ai-lisp :silent t)' \
-               --eval '(format t "~&loaded ok~%")' \
-               --eval '(uiop:quit 0)'
+               --eval '(asdf:load-system :photo-ai-lisp/tests)' \
+               --eval '(photo-ai-lisp/tests:run-tests)'
