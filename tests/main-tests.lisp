@@ -17,3 +17,26 @@
 
 (test parse-int-invalid
   (is (null (photo-ai-lisp::parse-int "abc"))))
+
+(test parse-and-eval-expr-success
+  (let ((r (photo-ai-lisp::parse-and-eval-expr "(+ 1 2)")))
+    (is-true (getf r :ok))
+    (is (string= "3" (getf r :value)))
+    (is (string= "" (getf r :stdout)))))
+
+(test parse-and-eval-expr-error
+  (let ((r (photo-ai-lisp::parse-and-eval-expr "(/ 1 0)")))
+    (is-false (getf r :ok))
+    (is (stringp (getf r :error)))
+    (is (plusp (length (getf r :error))))))
+
+(test parse-and-eval-expr-stdout
+  (let ((r (photo-ai-lisp::parse-and-eval-expr "(progn (format t \"hi\") 7)")))
+    (is-true (getf r :ok))
+    (is (string= "7"  (getf r :value)))
+    (is (string= "hi" (getf r :stdout)))))
+
+(test parse-and-eval-expr-read-error
+  (let ((r (photo-ai-lisp::parse-and-eval-expr "(unbalanced")))
+    (is-false (getf r :ok))
+    (is (stringp (getf r :error)))))

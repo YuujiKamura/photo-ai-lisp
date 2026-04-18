@@ -34,8 +34,9 @@
       :selected (when (eql selected category) "selected")
       (str (string-downcase (symbol-name category)))))))
 
-(defun index-page ()
-  (layout "photo-ai-lisp"
+(defun photos-page ()
+  (layout "Photos"
+    (:h2 "Photos")
     (:table :border "1" :cellpadding "6"
      (:tr (:th "ID") (:th "Path") (:th "Category") (:th "Uploaded") (:th "Link"))
      (dolist (photo (reverse (all-photos)))
@@ -46,6 +47,112 @@
          (:td (str (string-downcase (symbol-name (photo-category photo)))))
          (:td (str (photo-uploaded-at photo)))
          (:td (:a :href (format nil "/photo/~D" (photo-id photo)) "Open"))))))))
+
+(defun localhost-request-p ()
+  "True when the current request's remote-addr is a loopback address."
+  (let ((addr (remote-addr*)))
+    (and addr (or (string= addr "127.0.0.1")
+                  (string= addr "::1")
+                  (string= addr "0:0:0:0:0:0:0:1")))))
+
+(defun parse-and-eval-expr (expr)
+  "Read and evaluate EXPR (a string) in the photo-ai-lisp package.
+Returns a plist:
+  (:ok T   :value STR :stdout STR)  on success
+  (:ok NIL :error STR)              on any condition."
+  (let ((*package* (find-package '#:photo-ai-lisp)))
+    (handler-case
+        (let* ((out (make-string-output-stream))
+               (form (read-from-string expr))
+               (value (let ((*standard-output* out)
+                            (*error-output* out))
+                        (eval form))))
+          (list :ok t
+                :value (with-output-to-string (s) (prin1 value s))
+                :stdout (get-output-stream-string out)))
+      (error (c)
+        (list :ok nil :error (princ-to-string c))))))
+
+(defun eval-dispatch ()
+  (cond
+    ((not (eq (request-method*) :POST))
+     (setf (return-code*) 405) "Method Not Allowed")
+    ((not (localhost-request-p))
+     (setf (return-code*) 403) "Forbidden: /eval is localhost-only")
+    (t
+     (setf (content-type*) "application/json")
+     (let* ((expr (or (post-parameter "expr") ""))
+            (result (parse-and-eval-expr expr)))
+       (with-output-to-string (s)
+         (write-string "{\"ok\":" s)
+         (write-string (if (getf result :ok) "true" "false") s)
+         (cond ((getf result :ok)
+                (write-string ",\"value\":" s)
+                (yason:encode (getf result :value) s)
+                (write-string ",\"stdout\":" s)
+                (yason:encode (getf result :stdout) s))
+               (t
+                (write-string ",\"error\":" s)
+                (yason:encode (getf result :error) s)))
+         (write-string "}" s))))))
+
+(defun repl-page ()
+  (setf (content-type*) "text/html; charset=utf-8")
+  (format nil "<!DOCTYPE html>
+<html lang=\"en\"><head><meta charset=\"utf-8\">
+<title>photo-ai-lisp REPL</title>
+<style>
+ body{font-family:ui-monospace,Menlo,Consolas,monospace;margin:1rem;max-width:900px;color:#222}
+ header h1{margin:.2rem 0}
+ nav a{margin-right:.3rem}
+ .warn{background:#fff3cd;border:1px solid #d39e00;color:#533f03;padding:.5rem;margin:.8rem 0;border-radius:4px}
+ #history{background:#111;color:#ddd;padding:.6rem;height:380px;overflow-y:auto;white-space:pre-wrap;font-size:13px;border-radius:4px}
+ #history .in{color:#8cf}
+ #history .out{color:#cfc}
+ #history .err{color:#f88}
+ #history .stdout{color:#dca}
+ textarea{width:100%;font-family:inherit;font-size:14px;padding:.4rem;box-sizing:border-box;margin-top:.5rem;border:1px solid #aaa;border-radius:4px}
+ .chips{margin:.4rem 0}
+ .chips button{font-family:inherit;font-size:12px;margin:.15rem .15rem 0 0;padding:.25rem .5rem;cursor:pointer;border:1px solid #888;background:#f4f4f4;border-radius:3px}
+ .chips button:hover{background:#e0e8ff}
+ footer{margin-top:1rem;color:#666;font-size:12px}
+</style></head><body>
+<header>
+ <h1>photo-ai-lisp</h1>
+ <nav><a href=\"/\">Home</a> | <a href=\"/photos\">Photos</a> | <a href=\"/upload\">Upload</a> | <a href=\"/scan\">Scan</a> | <a href=\"/manifest\">Manifest</a> | <a href=\"/pipeline\">Pipeline</a></nav>
+</header>
+<div class=\"warn\"><strong>Local dev only.</strong> Do not expose publicly &mdash; <code>/eval</code> runs arbitrary Lisp against the running image.</div>
+<div id=\"history\"></div>
+<div class=\"chips\">
+ <button data-expr=\"(all-photos)\">(all-photos)</button>
+ <button data-expr='(add-photo \"/img/sample.jpg\" :note)'>(add-photo ...)</button>
+ <button data-expr=\"(length (all-photos))\">(length (all-photos))</button>
+ <button data-expr=\"(find-photo 1)\">(find-photo 1)</button>
+</div>
+<textarea id=\"input\" rows=\"3\" placeholder=\"(+ 1 2)   \\u2014 Enter to eval, Shift+Enter for newline\" autofocus></textarea>
+<footer>REPL-driven live-edit. Redefine handlers, DEFUNs, DEFVARs directly &mdash; changes take effect on the next request.</footer>
+<script>
+const hist=document.getElementById('history');
+const input=document.getElementById('input');
+function add(cls,text){const d=document.createElement('div');d.className=cls;d.textContent=text;hist.appendChild(d);hist.scrollTop=hist.scrollHeight;}
+async function evalExpr(expr){
+  add('in','> '+expr);
+  try{
+    const r=await fetch('/eval',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({expr})});
+    const j=await r.json();
+    if(j.stdout)add('stdout',j.stdout);
+    if(j.ok)add('out',j.value);else add('err','ERROR: '+j.error);
+  }catch(e){add('err','NET ERROR: '+e.message);}
+}
+input.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){
+    e.preventDefault();
+    const v=input.value.trim();
+    if(v){evalExpr(v);input.value='';}
+  }
+});
+document.querySelectorAll('.chips button').forEach(b=>b.addEventListener('click',()=>{input.value=b.dataset.expr;input.focus();}));
+</script></body></html>"))
 
 (defun upload-page ()
   (layout "Upload"
@@ -169,9 +276,11 @@
                 (create-prefix-dispatcher "/pipeline" 'pipeline-page)
                 (create-prefix-dispatcher "/manifest" 'manifest-page)
                 (create-prefix-dispatcher "/scan" 'scan-dispatch)
+                (create-prefix-dispatcher "/photos" 'photos-page)
                 (create-prefix-dispatcher "/photo/" 'photo-dispatch)
                 (create-prefix-dispatcher "/upload" 'upload-dispatch)
-                (create-prefix-dispatcher "/" 'index-page)))
+                (create-prefix-dispatcher "/eval" 'eval-dispatch)
+                (create-prefix-dispatcher "/" 'repl-page)))
     (hunchentoot:start *acceptor*))
   *acceptor*)
 

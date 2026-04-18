@@ -16,6 +16,34 @@ Make the project visible to Quicklisp by cloning or symlinking this repository i
 
 The intended development loop is live REPL editing: redefine functions from the REPL while the server is running, reload the browser, and immediately see the new behavior without a separate build or deploy step. SLIME, Sly, or Alive all fit this workflow well and make the edit-eval-refresh cycle much more comfortable.
 
+## The REPL front page
+
+`GET /` is not a CRUD table — it is an in-browser Lisp REPL bound to the running SBCL image. Type an expression, hit Enter, and the form is `read` + `eval`'d inside the `photo-ai-lisp` package with `*standard-output*` captured. The response is rendered back into a scrolling history:
+
+    > (+ 1 2)
+    3
+    > (length (all-photos))
+    1
+    > (defun greet (n) (format nil "hi ~A" n))
+    GREET
+    > (greet "lisp")
+    "hi lisp"
+
+Definitions persist across requests because the eval happens in the same image the server runs in — redefine a handler or a helper and the next request picks it up. The old photo table still lives at `/photos`.
+
+### Safety
+
+- `/eval` refuses any request whose `remote-addr` is not `127.0.0.1` / `::1` and returns `403`.
+- The page carries a conspicuous "Local dev only" banner. Do not expose this server on a public host — `/eval` runs arbitrary Lisp against your image.
+- No auth, no sandbox, no quota. This is a single-developer live-edit environment, not a shared service.
+
+### API
+
+`POST /eval` with form body `expr=<lisp-form>` returns JSON:
+
+- Success: `{"ok":true,"value":"<prin1-of-result>","stdout":"<captured-output>"}`
+- Failure (read error, runtime condition, etc.): `{"ok":false,"error":"<principal-message>"}` with HTTP 200.
+
 ## Persistence
 
 Photos are saved to `~/.photo-ai-lisp/photos.store` via `cl-store` on every mutation. The store is loaded automatically on start. Delete that file to reset the local state.
