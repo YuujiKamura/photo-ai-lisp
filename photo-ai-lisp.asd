@@ -6,6 +6,7 @@
   :components ((:module "src"
                 :serial t
                 :components ((:file "package")
+                             (:file "ansi")
                              (:file "agent")
                              (:file "main")))))
 
@@ -14,6 +15,7 @@
   :components ((:module "tests"
                 :serial t
                 :components ((:file "package")
+                             (:file "ansi-tests")
                              (:file "agent-scenario"))))
   :perform (test-op (o c)
              (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))
