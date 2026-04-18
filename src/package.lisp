@@ -13,5 +13,9 @@
            ;; screen grid (5b)
            #:make-screen
            #:screen-rows #:screen-cols #:screen-buffer #:screen-cursor
+           ;; cursor model (5c)
+           #:make-cursor
+           #:cursor-row #:cursor-col #:cursor-visible #:cursor-attrs
+           #:cursor-move
            ;; sgr parser (5e.4a)
            #:parse-sgr-params))

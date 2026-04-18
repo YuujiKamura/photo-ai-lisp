@@ -51,3 +51,28 @@
           (is (char= #\Space (photo-ai-lisp:cell-char cell)))
           (is (= 7 (photo-ai-lisp:cell-fg cell)))
           (is (= 0 (photo-ai-lisp:cell-bg cell))))))))
+
+;;; --- 5c: cursor model ---
+
+(test screen-cursor-starts-at-origin
+  (let* ((s (photo-ai-lisp:make-screen 3 5))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (is (= 0 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 0 (photo-ai-lisp:cursor-col cursor)))))
+
+(test cursor-move-relative
+  (let* ((s (photo-ai-lisp:make-screen 4 6))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (photo-ai-lisp:cursor-move cursor s :rel-row 2 :rel-col 3)
+    (is (= 2 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 3 (photo-ai-lisp:cursor-col cursor)))))
+
+(test cursor-move-clamps-at-screen-edges
+  (let* ((s (photo-ai-lisp:make-screen 3 4))
+         (cursor (photo-ai-lisp:screen-cursor s)))
+    (photo-ai-lisp:cursor-move cursor s :rel-row -2 :rel-col -5)
+    (is (= 0 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 0 (photo-ai-lisp:cursor-col cursor)))
+    (photo-ai-lisp:cursor-move cursor s :rel-row 20 :rel-col 20)
+    (is (= 2 (photo-ai-lisp:cursor-row cursor)))
+    (is (= 3 (photo-ai-lisp:cursor-col cursor)))))
