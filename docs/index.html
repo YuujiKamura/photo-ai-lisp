@@ -7,21 +7,59 @@
   <style>
     :root { color-scheme: dark; }
     body { margin: 0; background: #111; color: #eee; font-family: system-ui, sans-serif; }
-    main { max-width: 720px; margin: 0 auto; padding: 4rem 1.25rem; }
-    h1 { margin: 0 0 1rem; font-size: clamp(2rem, 6vw, 3rem); }
-    p { line-height: 1.6; }
+    main { max-width: 880px; margin: 0 auto; padding: 3rem 1.25rem; }
+    h1 { margin: 0 0 0.5rem; font-size: clamp(2rem, 6vw, 3rem); }
+    h2 { margin: 2.5rem 0 0.75rem; font-size: 1.3rem; color: #ccc; }
+    p { line-height: 1.65; }
     a { color: #9ecbff; }
-    .badge { display: inline-block; margin-top: 1rem; padding: 0.35rem 0.7rem; border: 1px solid #666; border-radius: 999px; font-size: 0.9rem; }
+    img.screenshot { display: block; width: 100%; max-width: 880px; border: 1px solid #333; border-radius: 6px; margin: 0.75rem 0 1.5rem; }
+    .badge { display: inline-block; padding: 0.3rem 0.7rem; border: 1px solid #555; border-radius: 999px; font-size: 0.85rem; color: #ccc; margin-right: 0.4rem; }
+    .badge.ok { border-color: #3fb950; color: #3fb950; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    pre { background: #1b1b1b; padding: 0.9rem 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; line-height: 1.5; }
+    ul { line-height: 1.75; }
+    hr { border: 0; border-top: 1px solid #2a2a2a; margin: 2rem 0; }
   </style>
 </head>
 <body>
   <main>
     <header>
       <h1>photo-ai-lisp</h1>
-      <p>A minimal GitHub Pages landing page for a Common Lisp construction photo manifest management app focused on a live-editing, REPL-driven development workflow.</p>
+      <p>A small Common Lisp web application exploring Paul Graham&rsquo;s Viaweb / Yahoo Store development style in a personal construction-photo domain.</p>
+      <p>
+        <span class="badge ok">Viaweb loop verified</span>
+        <span class="badge">41/41 tests passing</span>
+        <span class="badge">GitHub Actions CI</span>
+      </p>
     </header>
-    <p><a href="https://github.com/YuujiKamura/photo-ai-lisp">View the GitHub repository</a></p>
-    <p><span class="badge">Work in Progress</span></p>
+
+    <h2>Running locally</h2>
+    <img class="screenshot" src="screenshot-home.png" alt="Screenshot of photo-ai-lisp running at localhost:8080, showing the Home table with three sample photos.">
+    <p>Hunchentoot serves a Lisp-generated HTML index over <code>localhost:8080</code>. Navigation links go to Upload, Scan, Manifest, and Pipeline views. The footer reads &ldquo;Viaweb-style live edit prototype&rdquo;.</p>
+
+    <h2>Why this project exists</h2>
+    <p>The stack is SBCL + Hunchentoot + cl-who. The development loop is edit a handler in the editor, <code>(load "src/main.lisp")</code> at a running REPL, refresh the browser, see the change &mdash; no restart, no deploy.</p>
+    <p>This repository also doubles as a practical study of the ideas in <em>On Lisp</em> applied to a real (if tiny) web application.</p>
+
+    <h2>Live-edit verification</h2>
+    <p>A one-shot script captures the HTML served by the running server, patches <code>src/main.lisp</code>, reloads the file into the same Lisp image, and captures the HTML again. Before and after differ, as expected:</p>
+    <pre>=== BEFORE ===
+&lt;p&gt;&lt;a href='/'&gt;Home&lt;/a&gt; ...&lt;/p&gt;&lt;/header&gt;&lt;table border='1' ...&gt;
+
+=== AFTER ===
+&lt;p&gt;&lt;a href='/'&gt;Home&lt;/a&gt; ...&lt;/p&gt;&lt;/header&gt;<strong>&lt;p&gt;live-edit at 2026-04-18&lt;/p&gt;</strong>&lt;table border='1' ...&gt;
+
+=== MATCH? === DIFFERENT - loop PASSED</pre>
+
+    <h2>Links</h2>
+    <ul>
+      <li><a href="https://github.com/YuujiKamura/photo-ai-lisp">GitHub repository</a></li>
+      <li><a href="https://github.com/YuujiKamura/photo-ai-lisp/actions/workflows/test.yml">CI status</a></li>
+      <li><a href="https://github.com/YuujiKamura/photo-ai-lisp/blob/main/README.md">README</a></li>
+    </ul>
+
+    <hr>
+    <p style="font-size: 0.85rem; color: #888;">Work in progress. No public live demo yet &mdash; the application runs locally on the author&rsquo;s machine.</p>
   </main>
 </body>
 </html>
