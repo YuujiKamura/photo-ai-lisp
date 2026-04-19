@@ -62,8 +62,9 @@
   "Return the PHOTO-CASE whose CASE-ID equals ID, scanning under
    ROOT. NIL if no match. Stable inverse of CASE-ID within a
    given ROOT contents snapshot."
-  (declare (ignore id root))
-  (%unimpl 'case-from-id))
+  (find id (scan-cases root)
+        :key  #'case-id
+        :test #'equal))
 
 ;; ---- HTTP handlers -------------------------------------------------------
 
