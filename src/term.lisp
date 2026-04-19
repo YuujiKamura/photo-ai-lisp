@@ -32,10 +32,9 @@
 ;;; 2b: stdin write  2c: stdout pump thread  2d: graceful shutdown
 
 (defclass shell-client (hunchensocket:websocket-client)
-  ((child        :initform nil :accessor shell-client-child)
-   (reader-thread :initform nil :accessor shell-client-reader-thread)
-   (case         :initform nil :accessor shell-client-case)
-   (session-id   :initform nil :accessor shell-client-session-id)))
+  ((case         :initform nil :accessor shell-client-case)
+   (session-id   :initform nil :accessor shell-client-session-id)
+   (cp-client    :initform nil :accessor shell-client-cp-client)))
 
 (defclass shell-resource (hunchensocket:websocket-resource)
   ()
@@ -51,93 +50,33 @@
             (when query-pos
               (parse-shell-case-query (subseq referer (1+ query-pos)))))))))
 
-(defun %shell-argv ()
-  ;; cmd.exe /Q suppresses echo; we keep echo off for pipe-driven usage so the
-  ;; terminal does not double-print characters we already typed. The banner
-  ;; still appears once at startup.
-  (if (uiop:os-windows-p)
-      '("cmd.exe" "/Q")
-      (list "/bin/bash" "--norc" "--noprofile")))
-
-;;; 2c — stdout pump: read chunks from child stdout, push to websocket.
-;;; LISTEN can lie about character availability on Windows pipe streams (and on
-;;; UTF-8 decoded streams mid-multibyte), so READ-CHAR may return NIL even when
-;;; we were told a character was ready. Treat NIL as "no data right now" —
-;;; flushing the buffer and sleeping briefly — rather than trying to push NIL
-;;; into the character buffer, which used to signal "(MOD 1114112)" type
-;;; errors and tear down the WebSocket client on the first keystroke.
-(defun %stdout-pump (client child)
-  (let ((out (child-process-stdout child))
-        (buf (make-array 512 :element-type 'character
-                             :adjustable t :fill-pointer 0)))
-    (handler-case
-        (loop
-          (cond
-            ((listen out)
-             (let ((c (read-char out nil :eof)))
-               (cond
-                 ((eq c :eof) (return))
-                 ((null c)
-                  ;; LISTEN said yes but READ-CHAR had nothing. Flush any
-                  ;; pending buffer and back off.
-                  (when (plusp (length buf))
-                    (ignore-errors
-                      (hunchensocket:send-text-message client (copy-seq buf)))
-                    (setf (fill-pointer buf) 0))
-                  (sleep 0.02))
-                 (t (vector-push-extend c buf)))))
-            ((plusp (length buf))
-             (ignore-errors
-               (hunchensocket:send-text-message client (copy-seq buf)))
-             (setf (fill-pointer buf) 0))
-            ((not (child-alive-p child))
-             (return))
-            (t (sleep 0.02))))
-      (error (e)
-        (format *error-output*
-                "[shell stdout-pump] ~a: ~a~%"
-                (type-of e) e)))))
-
-;;; 2b — on connect: spawn child, start stdout pump thread.
+;;; 2b — on connect: register session, and prepare CP bridge.
 (defmethod hunchensocket:client-connected ((resource shell-resource)
                                             (client   shell-client))
   (handler-case
       (let* ((request (hunchensocket:client-request client))
              (case-path (%request-case-path request))
              (photo-case (and case-path (find-case case-path)))
-             (session-id (format nil "sess-~a" (get-universal-time)))
-             (environment (and photo-case (build-case-env photo-case)))
-             (child (spawn-child :argv (%shell-argv)
-                                 :directory (and photo-case
-                                                 (photo-case-path photo-case))
-                                 :environment environment)))
+             (session-id (format nil "sess-~a" (get-universal-time))))
         (register-session session-id photo-case)
         (setf (shell-client-case client) photo-case)
         (setf (shell-client-session-id client) session-id)
-        (setf (shell-client-child client) child)
-        (setf (shell-client-reader-thread client)
-              (bordeaux-threads:make-thread
-               (lambda () (%stdout-pump client child))
-               :name "shell-stdout-pump"))
+        ;; Note: Actual CP connection will be established here in Atom 17.5
         (hunchensocket:send-text-message
          client
          (format nil "~CGW:session:~a~%" #\Esc session-id)))
     (error (e)
       (ignore-errors
         (hunchensocket:send-text-message
-         client (format nil "[failed to start shell: ~a]" e))))))
+         client (format nil "[failed to start session: ~a]" e))))))
 
-;;; 2d — graceful shutdown: close stdin, wait up to 2s, then terminate.
+;;; 2d — graceful shutdown: clear session.
 (defmethod hunchensocket:client-disconnected ((resource shell-resource)
                                                (client   shell-client))
-  (let ((session-id (shell-client-session-id client))
-        (child (shell-client-child client)))
+  (let ((session-id (shell-client-session-id client)))
     (when session-id
       (clear-session session-id)
-      (setf (shell-client-session-id client) nil))
-    (when child
-      (kill-child child)
-      (setf (shell-client-child client) nil))))
+      (setf (shell-client-session-id client) nil))))
 
 ;;; Accept binary frames on the shell resource — hunchensocket's default
 ;;; CHECK-MESSAGE rejects them. We need binary frames because hunchensocket's
@@ -152,50 +91,21 @@
   (declare (ignore resource client length total))
   nil)
 
-(defun %write-octets-to-child (octets child)
-  ;; cmd.exe reading from a pipe completes a line on #\Newline (LF), not on
-  ;; bare CR. xterm.js's Enter key emits #\Return only, so translate bare CR
-  ;; (not already followed by LF) into CRLF before handing it to the child.
-  (let ((stdin (child-process-stdin child))
-        (n (length octets))
-        (i 0))
-    (loop while (< i n)
-          for o = (aref octets i)
-          do (cond
-               ((= o 13)                    ; CR
-                (write-char #\Return stdin)
-                (write-char #\Newline stdin)
-                ;; If the client already sent CRLF, skip the LF.
-                (when (and (< (1+ i) n) (= (aref octets (1+ i)) 10))
-                  (incf i))
-                (incf i))
-               (t (write-char (code-char o) stdin) (incf i))))
-    (finish-output stdin)))
-
-;;; 2b — binary message received: write raw bytes to child stdin.
+;;; 2b — binary message received: forward to CP server (TODO).
 (defmethod hunchensocket:binary-message-received ((resource shell-resource)
                                                    (client   shell-client)
                                                    message)
-  (let ((child (shell-client-child client)))
-    (when (and child (child-alive-p child))
-      (handler-case (%write-octets-to-child message child)
-        (error (e)
-          (format *error-output* "[shell binary-message-received] ~a~%" e))))))
+  (declare (ignore message))
+  ;; TODO: client-cp-client を使って CP Server へ転送
+  nil)
 
-;;; 2b — text message received: write to child stdin. Kept as a fallback for
-;;; clients that don't send binary frames (and for simple payloads without
-;;; trailing CR where the flexi-streams path actually works).
+;;; 2b — text message received: forward to CP server (TODO).
 (defmethod hunchensocket:text-message-received ((resource shell-resource)
                                                   (client   shell-client)
                                                   message)
-  (let ((child (shell-client-child client)))
-    (when (and child (child-alive-p child))
-      (handler-case
-          (progn
-            (write-string message (child-process-stdin child))
-            (finish-output (child-process-stdin child)))
-        (error (e)
-          (format *error-output* "[shell text-message-received] ~a~%" e))))))
+  (declare (ignore message))
+  ;; TODO: client-cp-client を使って CP Server へ転送
+  nil)
 
 (defun %find-shell-resource (request)
   (when (string= "/ws/shell" (hunchentoot:script-name request))
