@@ -33,13 +33,23 @@
 
 (defclass shell-client (hunchensocket:websocket-client)
   ((child        :initform nil :accessor shell-client-child)
-   (reader-thread :initform nil :accessor shell-client-reader-thread)))
+   (reader-thread :initform nil :accessor shell-client-reader-thread)
+   (case         :initform nil :accessor shell-client-case)
+   (session-id   :initform nil :accessor shell-client-session-id)))
 
 (defclass shell-resource (hunchensocket:websocket-resource)
   ()
   (:default-initargs :client-class 'shell-client))
 
 (defvar *shell-resource* (make-instance 'shell-resource))
+
+(defun %request-case-path (request)
+  (or (parse-shell-case-query (hunchentoot:query-string* request))
+      (let ((referer (hunchentoot:header-in :referer request)))
+        (when referer
+          (let ((query-pos (position #\? referer :from-end t)))
+            (when query-pos
+              (parse-shell-case-query (subseq referer (1+ query-pos)))))))))
 
 (defun %shell-argv ()
   ;; cmd.exe /Q suppresses echo; we keep echo off for pipe-driven usage so the
@@ -92,12 +102,26 @@
 (defmethod hunchensocket:client-connected ((resource shell-resource)
                                             (client   shell-client))
   (handler-case
-      (let ((child (spawn-child (%shell-argv))))
+      (let* ((request (hunchensocket:client-request client))
+             (case-path (%request-case-path request))
+             (photo-case (and case-path (find-case case-path)))
+             (session-id (format nil "sess-~a" (get-universal-time)))
+             (environment (and photo-case (build-case-env photo-case)))
+             (child (spawn-child (%shell-argv)
+                                 :directory (and photo-case
+                                                 (photo-case-path photo-case))
+                                 :environment environment)))
+        (register-session session-id photo-case)
+        (setf (shell-client-case client) photo-case)
+        (setf (shell-client-session-id client) session-id)
         (setf (shell-client-child client) child)
         (setf (shell-client-reader-thread client)
               (bordeaux-threads:make-thread
                (lambda () (%stdout-pump client child))
-               :name "shell-stdout-pump")))
+               :name "shell-stdout-pump"))
+        (hunchensocket:send-text-message
+         client
+         (format nil "~CGW:session:~a~%" #\Esc session-id)))
     (error (e)
       (ignore-errors
         (hunchensocket:send-text-message
@@ -106,7 +130,11 @@
 ;;; 2d — graceful shutdown: close stdin, wait up to 2s, then terminate.
 (defmethod hunchensocket:client-disconnected ((resource shell-resource)
                                                (client   shell-client))
-  (let ((child (shell-client-child client)))
+  (let ((session-id (shell-client-session-id client))
+        (child (shell-client-child client)))
+    (when session-id
+      (clear-session session-id)
+      (setf (shell-client-session-id client) nil))
     (when child
       (kill-child child)
       (setf (shell-client-child client) nil))))

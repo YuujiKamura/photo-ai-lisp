@@ -27,8 +27,10 @@
 import puppeteer from "puppeteer-core";
 import { writeFile, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import path from "node:path";
 
 const BASE = process.env.BASE || "http://localhost:18091";
+const FIXTURE_DIR = path.resolve(process.cwd(), "tests", "fixtures", "case-smoke");
 
 const CHROME_CANDIDATES = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -156,6 +158,8 @@ async function runCase({ name, path, typeText, expect, pngPath, consolePath, dom
 }
 
 try {
+  console.log(`[shell-smoke] case fixture: ${FIXTURE_DIR}`);
+
   await runCase({
     name: "term (/term echo)",
     path: "/term",
@@ -174,6 +178,16 @@ try {
     pngPath: "demo/shell-smoke.png",
     consolePath: "demo/shell-console.log",
     domPath: "demo/shell-dom.txt",
+  });
+
+  await runCase({
+    name: "shell (/shell?case=<fixture>)",
+    path: "/shell?case=" + encodeURIComponent(FIXTURE_DIR),
+    typeText: "echo photo-ai-lisp-case-smoke-OK",
+    expect: "photo-ai-lisp-case-smoke-OK",
+    pngPath: "demo/shell-case-smoke.png",
+    consolePath: "demo/shell-case-console.log",
+    domPath: "demo/shell-case-dom.txt",
   });
 } catch (e) {
   console.error("harness error:", e);
