@@ -179,7 +179,6 @@
                                             (values '(:err "fail") nil)))
     (photo-ai-lisp:register-skill :spec-halt-C
                                   :invoke (lambda (in)
-                                            (declare (ignore in))
                                             (setf b-ran t)
                                             (values in t)))
     (photo-ai-lisp:defpipeline spec-run-halt

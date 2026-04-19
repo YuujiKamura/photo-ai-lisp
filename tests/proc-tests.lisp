@@ -34,7 +34,7 @@
   "spawn-child should return a child-process struct."
   (if (uiop:os-windows-p)
       (skip "proc-spawn-child-returns-child-process: skipped on Windows")
-      (let ((child (photo-ai-lisp::spawn-child '("/bin/bash" "-c" "sleep 0.2"))))
+      (let ((child (photo-ai-lisp::spawn-child :argv '("/bin/bash" "-c" "sleep 0.2"))))
         (unwind-protect
             (is-true (typep child 'photo-ai-lisp::child-process)
                      "spawn-child should return a child-process, got: ~s"
@@ -45,7 +45,7 @@
   "child-process-stdin must be a writable stream; stdout a readable stream."
   (if (uiop:os-windows-p)
       (skip "proc-accessor-stream-types: skipped on Windows")
-      (let ((child (photo-ai-lisp::spawn-child '("/bin/bash" "-c" "sleep 0.2"))))
+      (let ((child (photo-ai-lisp::spawn-child :argv '("/bin/bash" "-c" "sleep 0.2"))))
         (unwind-protect
             (progn
               (is-true (output-stream-p (photo-ai-lisp::child-process-stdin child))
@@ -58,7 +58,7 @@
   "The process slot must hold a non-nil uiop process-info after spawn."
   (if (uiop:os-windows-p)
       (skip "proc-process-slot-non-nil: skipped on Windows")
-      (let ((child (photo-ai-lisp::spawn-child '("/bin/bash" "-c" "sleep 0.2"))))
+      (let ((child (photo-ai-lisp::spawn-child :argv '("/bin/bash" "-c" "sleep 0.2"))))
         (unwind-protect
             (is-true (photo-ai-lisp::child-process-process child)
                      "child-process-process slot should be non-nil after spawn")
@@ -68,7 +68,7 @@
   "child-alive-p should be true after spawn and false after kill."
   (if (uiop:os-windows-p)
       (skip "proc-child-alive-lifecycle: skipped on Windows")
-      (let ((child (photo-ai-lisp::spawn-child '("/bin/bash" "-c" "sleep 5"))))
+      (let ((child (photo-ai-lisp::spawn-child :argv '("/bin/bash" "-c" "sleep 5"))))
         (is-true (photo-ai-lisp::child-alive-p child)
                  "child should be alive immediately after spawn")
         (photo-ai-lisp::kill-child child)

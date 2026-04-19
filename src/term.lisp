@@ -107,7 +107,7 @@
              (photo-case (and case-path (find-case case-path)))
              (session-id (format nil "sess-~a" (get-universal-time)))
              (environment (and photo-case (build-case-env photo-case)))
-             (child (spawn-child (%shell-argv)
+             (child (spawn-child :argv (%shell-argv)
                                  :directory (and photo-case
                                                  (photo-case-path photo-case))
                                  :environment environment)))

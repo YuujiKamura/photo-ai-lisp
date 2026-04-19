@@ -34,7 +34,7 @@
                             (not (member name seen :test #'string-equal)))
                     collect (format nil "~a=~a" name value)))))
 
-(defun spawn-child (&optional (argv (%default-argv)) &key directory environment)
+(defun spawn-child (&key (argv (%default-argv)) directory environment)
   "Launch ARGV as a subprocess with piped stdio.
 Returns a CHILD-PROCESS; stderr is merged into stdout.
 
@@ -63,7 +63,7 @@ thread and tear down the shell WebSocket on the first keystroke."
          (proc (apply #'uiop:launch-program launch-args)))
     (make-child-process
      :process proc
-     :stdin   (uiop:process-info-input  proc)
+     :stdin   (uiop:process-info-input proc)
      :stdout  (uiop:process-info-output proc))))
 
 (defun child-alive-p (child)

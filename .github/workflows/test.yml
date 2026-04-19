@@ -39,6 +39,11 @@ jobs:
           mkdir -p ~/quicklisp/local-projects
           ln -sfn "$GITHUB_WORKSPACE" ~/quicklisp/local-projects/photo-ai-lisp
 
+      - name: Lint (load-system warnings)
+        run: |
+          sbcl --non-interactive \
+               --load scripts/lint.lisp
+
       - name: Run tests
         run: |
           sbcl --non-interactive \

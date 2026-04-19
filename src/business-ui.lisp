@@ -68,12 +68,7 @@
 
 ;; ---- HTTP handlers -------------------------------------------------------
 
-(defun %json-escape (s)
-  (with-output-to-string (out)
-    (loop for ch across (or s "") do
-      (cond ((char= ch #\\) (write-string "\\\\" out))
-            ((char= ch #\") (write-string "\\\"" out))
-            (t              (write-char ch out))))))
+;;; (using %json-escape from case.lisp)
 
 (defun %case->json (c)
   (format nil "{\"id\":\"~a\",\"name\":\"~a\",\"path\":\"~a\",\"has_reference\":~a}"

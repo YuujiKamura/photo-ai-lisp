@@ -5,7 +5,7 @@
 (test spawn-child-unix-echo
   (if (uiop:os-windows-p)
       (skip "spawn-child scenario: skipped on Windows")
-      (let* ((child (photo-ai-lisp::spawn-child '("/bin/bash" "-c" "echo hello")))
+      (let* ((child (photo-ai-lisp::spawn-child :argv '("/bin/bash" "-c" "echo hello")))
              (output (with-output-to-string (s)
                        (loop for line = (read-line (photo-ai-lisp::child-process-stdout child) nil nil)
                              while line
@@ -19,7 +19,7 @@
   (if (uiop:os-windows-p)
       (skip "shell round-trip: skipped on Windows")
       (let ((child (photo-ai-lisp::spawn-child
-                    '("/bin/bash" "--norc" "--noprofile"))))
+                    :argv '("/bin/bash" "--norc" "--noprofile"))))
         (unwind-protect
             (let ((in  (photo-ai-lisp::child-process-stdin  child))
                   (out (photo-ai-lisp::child-process-stdout child)))
