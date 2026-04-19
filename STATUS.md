@@ -12,14 +12,14 @@
   - `/`, `/cases`, `/cases/:id` のルーティングとハンドラが配線済み。
 - **Pipeline (Atoms 01-03)**: 完了。
   - スキル登録機能が着陸。
-- **Control Plane Integration (Atom 17.1)**: 完了。
-  - `src/cp-protocol.lisp` により、`INPUT`, `TAIL`, `STATE` 等のコマンド生成とレスポンスパースを実装。
-  - `cl-base64` 依存関係を追加し、バイナリ安全な通信の準備を完了。
-  - `tests/cp-protocol-tests.lisp` により 100% のテスト通過を確認。
+- **Control Plane Integration (Atom 17.1-17.3)**: 完了。
+  - `src/cp-protocol.lisp`: コマンド生成とレスポンスパースを実装 (17.1)。
+  - `src/cp-client.lisp`: `websocket-driver` による接続・同期送信基盤を実装 (17.2)。
+  - `src/pipeline-cp.lisp`: 常駐エージェントへの指示出し（`INPUT`）と完了待機（`TAIL` ループによる `DONE|ERROR` 判定）のコアロジックを実装 (17.3)。
 
 ### 3. 次の課題 (Next Actions)
-- **Atom 17.2: src/term.lisp の刷新**: 既存の単純中継を、CPプロトコルを喋る WebSocket クライアント/サーバへアップグレード。
-- **Pipeline Core (Atoms 04-08)**: ワークフロー実行エンジンを CP 経由で動くように実装。
+- **Phase 2: Pipeline Core (Atoms P-04 - P-08)**: ワークフロー実行エンジン（`defpipeline`, `run-pipeline`）の実装。
+- **Atom 17.4: src/term.lisp の刷新**: 不要になった旧式のプロセス管理コード（`proc.lisp` の遺産等）を削除し、CP プロトコルへの完全移行。
 
 ## 開発の指針
 - **Warnings are Errors**: コード変更時は必ず `sbcl --load scripts/lint.lisp` を通すこと。
