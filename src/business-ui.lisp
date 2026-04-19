@@ -68,11 +68,26 @@
 
 ;; ---- HTTP handlers -------------------------------------------------------
 
+(defun %json-escape (s)
+  (with-output-to-string (out)
+    (loop for ch across (or s "") do
+      (cond ((char= ch #\\) (write-string "\\\\" out))
+            ((char= ch #\") (write-string "\\\"" out))
+            (t              (write-char ch out))))))
+
+(defun %case->json (c)
+  (format nil "{\"id\":\"~a\",\"name\":\"~a\",\"path\":\"~a\",\"has_reference\":~a}"
+          (%json-escape (case-id c))
+          (%json-escape (or (photo-case-name c) ""))
+          (%json-escape (namestring (photo-case-path c)))
+          (if (photo-case-reference-path c) "true" "false")))
+
 (defun list-cases-handler ()
   "HTTP handler body for GET /cases. Returns a JSON string:
      [{\"id\":...,\"name\":...,\"path\":...,\"has_reference\":bool}, ...]
    Empty array when no cases."
-  (%unimpl 'list-cases-handler))
+  (let ((objs (mapcar #'%case->json (scan-cases))))
+    (format nil "[~{~a~^,~}]" objs)))
 
 (defun case-view-handler (id)
   "HTTP handler body for GET /cases/:id. Returns an HTML string
