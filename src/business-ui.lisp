@@ -31,12 +31,32 @@
           for case = (case-from-directory subdir)
           when case collect case)))
 
+(defun %url-safe-char-p (ch)
+  (or (alphanumericp ch)
+      (member ch '(#\- #\_))))
+
+(defun %slugify (s)
+  (let ((out (make-string (length s))))
+    (dotimes (i (length s) out)
+      (let ((ch (char s i)))
+        (setf (char out i)
+              (if (%url-safe-char-p ch)
+                  (char-downcase ch)
+                  #\-))))))
+
 (defun case-id (case)
   "Stable URL-safe identifier for CASE. Deterministic: same
    CASE -> same id across calls. Derived from the directory
    basename; collisions resolved with a short hash suffix."
-  (declare (ignore case))
-  (%unimpl 'case-id))
+  (let* ((path     (photo-case-path case))
+         (dir-list (pathname-directory path))
+         (basename (if (consp dir-list)
+                       (or (car (last dir-list)) "")
+                       ""))
+         (slug     (%slugify basename)))
+    (if (zerop (length slug))
+        (format nil "case-~8,'0x" (sxhash (namestring path)))
+        slug)))
 
 (defun case-from-id (id &optional (root *case-root*))
   "Return the PHOTO-CASE whose CASE-ID equals ID, scanning under
