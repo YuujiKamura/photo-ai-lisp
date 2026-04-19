@@ -14,4 +14,4 @@ sbcl --non-interactive \
      --eval '(fiveam:run! (find-symbol "CP-CLIENT-SEND-COMMAND-SYNC" "PHOTO-AI-LISP/TESTS"))' \
      --eval '(fiveam:run! (find-symbol "CP-CLIENT-TAIL-HELPER" "PHOTO-AI-LISP/TESTS"))' \
      --eval '(fiveam:run! (find-symbol "CP-CLIENT-INPUT-HELPER" "PHOTO-AI-LISP/TESTS"))' \
-     --eval '(fiveam:run! (find-symbol "PIPELINE-INVOKE-VIA-CP-RETURNS-VALUES" "PHOTO-AI-LISP/TESTS"))'
+     --eval '(fiveam:run! (find-symbol "PIPELINE-INVOKE-VIA-CP-INTERACTION" "PHOTO-AI-LISP/TESTS"))'

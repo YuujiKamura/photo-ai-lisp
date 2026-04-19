@@ -74,14 +74,12 @@
        (:infer-scope)
        (:match :priority '(工種 種別))
        (:export-xlsx))"
-  (declare (ignore name steps))
-  `(progn
-     (%unimpl 'defpipeline)))
+  `(setf (gethash ',name *pipelines*)
+         (make-instance 'pipeline :name ',name :steps ',steps)))
 
 (defun find-pipeline (name)
   "Return the PIPELINE for NAME, or NIL."
-  (declare (ignore name))
-  (%unimpl 'find-pipeline))
+  (gethash name *pipelines*))
 
 ;; ---- executor ------------------------------------------------------------
 
@@ -106,5 +104,39 @@
   "Execute the pipeline with INPUT (plist, default NIL). Thread each step's
    output into the next step's input. Halt on the first failing step and
    record the failure index. Return a PIPELINE-RESULT."
-  (declare (ignore pipeline-or-name input))
-  (%unimpl 'run-pipeline))
+  (let* ((pipeline (if (typep pipeline-or-name 'pipeline)
+                       pipeline-or-name
+                       (find-pipeline pipeline-or-name)))
+         (current-input input)
+         (executed-steps '())
+         (failure-idx nil)
+         (all-success t))
+    (unless pipeline
+      (return-from run-pipeline (make-instance 'pipeline-result :success-p nil)))
+    
+    (loop for step in (pipeline-steps pipeline)
+          for i from 0
+          do (let* ((skill-name (first step))
+                    (skill (find-skill skill-name)))
+               (if (null skill)
+                   (progn
+                     (setf all-success nil
+                           failure-idx i)
+                     (loop-finish))
+                   (multiple-value-bind (out success)
+                       (funcall (skill-invoke skill) current-input)
+                     (push (list :name skill-name :output out :success-p success)
+                           executed-steps)
+                     (if success
+                         (setf current-input out)
+                         (progn
+                           (setf all-success nil
+                                 failure-idx i)
+                           (loop-finish))))))
+          finally (setf executed-steps (reverse executed-steps)))
+    
+    (make-instance 'pipeline-result
+                   :success-p     all-success
+                   :steps         executed-steps
+                   :final-output  current-input
+                   :failure-index failure-idx)))
