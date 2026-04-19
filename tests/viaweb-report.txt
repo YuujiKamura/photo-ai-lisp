@@ -1,0 +1,10 @@
+=== BEFORE (first 600 chars) ===
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html><head><title>photo-ai-lisp</title></head><body><header style='margin-bottom: 1rem'><h1>photo-ai-lisp</h1><p><a href='/'>Home</a> | <a href='/upload'>Upload</a> | <a href='/scan'>Scan</a> | <a href='/manifest'>Manifest</a> | <a href='/pipeline'>Pipeline</a></p></header><table border='1' cellpadding='6'><tr><th>ID</th><th>Path</th><th>Category</th><th>Uploaded</th><th>Link</th></tr><tr><td>1</td><td>/img/d.jpg</td><td>after</td><td>3985488665</td><td><a href='/photo/1'>Open</a></td
+
+=== AFTER (first 600 chars) ===
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html><head><title>photo-ai-lisp</title></head><body><header style='margin-bottom: 1rem'><h1>photo-ai-lisp</h1><p><a href='/'>Home</a> | <a href='/upload'>Upload</a> | <a href='/scan'>Scan</a> | <a href='/manifest'>Manifest</a> | <a href='/pipeline'>Pipeline</a></p></header><p>live-edit at 2026-04-18</p><table border='1' cellpadding='6'><tr><th>ID</th><th>Path</th><th>Category</th><th>Uploaded</th><th>Link</th></tr><tr><td>1</td><td>/img/d.jpg</td><td>after</td><td>3985488665</td><td><
+
+=== MATCH? ===
+DIFFERENT - loop PASSED
