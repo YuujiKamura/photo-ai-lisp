@@ -33,21 +33,19 @@
 
 (defun make-skill (&key name describe invoke)
   (make-instance 'skill :name name :describe describe :invoke invoke))
-
 (defun register-skill (name &key describe invoke)
   "Create or replace a SKILL under NAME in *skills*. Returns the skill."
-  (declare (ignore name describe invoke))
-  (%unimpl 'register-skill))
+  (let ((s (make-skill :name name :describe describe :invoke invoke)))
+    (setf (gethash name *skills*) s)
+    s))
 
 (defun find-skill (name)
   "Return the SKILL for NAME, or NIL."
-  (declare (ignore name))
-  (%unimpl 'find-skill))
+  (gethash name *skills*))
 
 (defun unregister-skill (name)
   "Remove NAME from *skills*. Idempotent."
-  (declare (ignore name))
-  (%unimpl 'unregister-skill))
+  (remhash name *skills*))
 
 ;; ---- pipeline registry + compilation -------------------------------------
 
