@@ -2,7 +2,7 @@
   :version "0.0.1"
   :description "Lisp orchestrator for construction photo pipeline"
   :license "MIT"
-  :depends-on ("hunchentoot" "hunchensocket" "cl-who" "bordeaux-threads")
+  :depends-on ("hunchentoot" "hunchensocket" "cl-who" "bordeaux-threads" "cl-base64")
   :components ((:module "src"
                 :serial t
                 :components ((:file "package")
@@ -11,6 +11,7 @@
                              (:file "case")
                              (:file "pipeline")
                              (:file "business-ui")
+                             (:file "cp-protocol")
                              (:file "term")
                              (:file "main")))))
 
@@ -29,6 +30,7 @@
                              (:file "main-coverage-tests")
                              (:file "case-tests")
                              (:file "pipeline-tests")
-                             (:file "business-ui-tests"))))
+                             (:file "business-ui-tests")
+                             (:file "cp-protocol-tests"))))
   :perform (test-op (o c)
              (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))

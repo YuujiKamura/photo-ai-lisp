@@ -47,4 +47,11 @@
            #:case-from-id
            #:list-cases-handler
            #:case-view-handler
-           #:home-handler))
+           #:home-handler
+           ;; issue #17 — CP (Control Plane) client
+           #:cp-command
+           #:cp-parse-response
+           #:make-cp-input
+           #:make-cp-tail
+           #:make-cp-state
+           #:make-cp-list-tabs))

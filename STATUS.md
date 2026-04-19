@@ -10,15 +10,16 @@
 ### 2. 進捗状況 (Atom Landing)
 - **Business UI (Atoms 01-07)**: 完了。
   - `/`, `/cases`, `/cases/:id` のルーティングとハンドラが配線済み。
-  - 既存のカバレッジテスト維持のため、`home-page` には `/term` への隠しリンクを一時的に保持。
 - **Pipeline (Atoms 01-03)**: 完了。
-  - スキル登録（`register-skill`, `find-skill`, `unregister-skill`）が着陸。
-  - `pipeline-01` と `03` はテストの依存関係により同時適用。
+  - スキル登録機能が着陸。
+- **Control Plane Integration (Atom 17.1)**: 完了。
+  - `src/cp-protocol.lisp` により、`INPUT`, `TAIL`, `STATE` 等のコマンド生成とレスポンスパースを実装。
+  - `cl-base64` 依存関係を追加し、バイナリ安全な通信の準備を完了。
+  - `tests/cp-protocol-tests.lisp` により 100% のテスト通過を確認。
 
 ### 3. 次の課題 (Next Actions)
-- **Pipeline Core (Atoms 04-08)**: ワークフロー実行エンジンの核心部（`defpipeline`, `run-pipeline`）の実装。
-- **Windows固有ロジックの検証**: 現状CIはUbuntuだが、実機（Windows）での外部プロセス起動（Ghostty/PowerShell）の結合試験が必要。
-- **Open Questionsの解消**: `REQUIREMENTS.md` 第7節にある設計判断（エージェントの分離ポリシー等）を要件へ昇格させる。
+- **Atom 17.2: src/term.lisp の刷新**: 既存の単純中継を、CPプロトコルを喋る WebSocket クライアント/サーバへアップグレード。
+- **Pipeline Core (Atoms 04-08)**: ワークフロー実行エンジンを CP 経由で動くように実装。
 
 ## 開発の指針
 - **Warnings are Errors**: コード変更時は必ず `sbcl --load scripts/lint.lisp` を通すこと。
