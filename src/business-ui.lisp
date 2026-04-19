@@ -85,4 +85,14 @@
   "HTTP handler body for GET /. Renders the case list page
    (delegates to LIST-CASES-HANDLER for data, then HTML-wraps it),
    or emits an HTTP redirect to /cases — implementer's choice."
-  (%unimpl 'home-handler))
+  (format nil "<!DOCTYPE html>
+<html>
+<head>
+  <meta charset=\"utf-8\">
+  <title>photo-ai-lisp</title>
+  <meta http-equiv=\"refresh\" content=\"0; url=/cases\">
+</head>
+<body>
+  <p>Redirecting to <a href=\"/cases\">/cases</a>...</p>
+</body>
+</html>"))
