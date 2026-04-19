@@ -54,4 +54,10 @@
            #:make-cp-input
            #:make-cp-tail
            #:make-cp-state
-           #:make-cp-list-tabs))
+           #:make-cp-list-tabs
+           #:connect-cp
+           #:disconnect-cp
+           #:send-cp-command
+           #:cp-tail
+           #:cp-input
+           #:invoke-via-cp))
