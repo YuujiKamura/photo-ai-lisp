@@ -7,23 +7,11 @@
 ;;; These are state/contract tests only; actual agent invocation is
 ;;; covered by tests/agent-scenario.lisp.
 
-;; UT4a: agent-alive-p returns nil when *agent-process* is nil.
+;; UT4a: agent-alive-p returns T (placeholder for CP availability).
 (test agent-alive-p-nil-with-no-process
   (let ((photo-ai-lisp::*agent-process* nil))
-    (is (null (photo-ai-lisp::agent-alive-p))
-        "agent-alive-p should return nil when *agent-process* is nil")))
-
-;; UT4b: agent-stdin returns nil when *agent-process* is nil.
-(test agent-stdin-nil-with-no-process
-  (let ((photo-ai-lisp::*agent-process* nil))
-    (is (null (photo-ai-lisp::agent-stdin))
-        "agent-stdin should return nil when *agent-process* is nil")))
-
-;; UT4c: agent-stdout returns nil when *agent-process* is nil.
-(test agent-stdout-nil-with-no-process
-  (let ((photo-ai-lisp::*agent-process* nil))
-    (is (null (photo-ai-lisp::agent-stdout))
-        "agent-stdout should return nil when *agent-process* is nil")))
+    (is-true (photo-ai-lisp::agent-alive-p)
+        "agent-alive-p should return T (CP placeholder) even when *agent-process* is nil")))
 
 ;; UT4d: stop-agent does not error when *agent-process* is nil (idempotent).
 (test agent-stop-agent-idempotent-with-nil

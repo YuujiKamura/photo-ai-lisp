@@ -10,9 +10,9 @@
    (response-cond :accessor cp-client-response-cond :initform (bt:make-condition-variable :name "cp-response-cond"))))
 
 (defun connect-cp (&key (host "localhost") (port 8080))
-  "Connect to the CP WebSocket endpoint at ws://<host>:<port>/cp.
+  "Connect to the CP WebSocket endpoint at ws://<host>:<port>/ws.
    Returns a client object."
-  (let* ((url (format nil "ws://~A:~D/cp" host port))
+  (let* ((url (format nil "ws://~A:~D/ws" host port))
          (driver (wsd:make-client url))
          (client (make-instance 'cp-client :driver driver)))
     (wsd:on :message driver

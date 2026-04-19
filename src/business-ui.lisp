@@ -20,6 +20,10 @@
   "Root directory scanned for cases. Each immediate subdirectory is
    treated as one case. Configurable; tests rebind to a temp dir.")
 
+(defvar *ghostty-web-url* (or (uiop:getenv "GHOSTTY_WEB_URL") "http://localhost:3000")
+  "The base URL of the ghostty-web (Node.js) or Deckpilot daemon.
+   The terminal iframe in the case view will point directly here.")
+
 ;; ---- case scan + id ------------------------------------------------------
 
 (defun scan-cases (&optional (root *case-root*))
@@ -126,7 +130,7 @@ reference: ~a
 masters:   ~a</pre>
     </div>
     <div class=\"term\">
-      <iframe src=\"/shell?case=~a\"></iframe>
+      <iframe src=\"~a/shell?case=~a\"></iframe>
     </div>
   </div>
 </body></html>"
@@ -137,6 +141,7 @@ masters:   ~a</pre>
                   (or (and (photo-case-masters-dir c)
                            (namestring (photo-case-masters-dir c)))
                       "(none)")
+                  *ghostty-web-url*
                   encoded)))))
 
 (defun home-handler ()

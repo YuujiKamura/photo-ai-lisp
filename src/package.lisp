@@ -48,6 +48,7 @@
            #:list-cases-handler
            #:case-view-handler
            #:home-handler
+           #:*ghostty-web-url*
            ;; issue #17 — CP (Control Plane) client
            #:cp-command
            #:cp-parse-response

@@ -13,7 +13,10 @@
            "shell-client class should be defined"))
 
 (test term-shell-client-accessors-defaults
-  (let ((c (make-instance 'photo-ai-lisp::shell-client)))
+  (let ((c (make-instance 'photo-ai-lisp::shell-client
+                          'hunchensocket::input-stream (make-broadcast-stream)
+                          'hunchensocket::output-stream (make-broadcast-stream)
+                          'hunchensocket::request :mock-req)))
     (is (null (photo-ai-lisp::shell-client-cp-client c))
         "shell-client-cp-client should default to nil")
     ;; setf round-trip.
