@@ -26,8 +26,10 @@
   "Return a list of PHOTO-CASE objects — one per immediate
    subdirectory of ROOT. Does not recurse. Returns NIL on missing
    or empty root."
-  (declare (ignore root))
-  (%unimpl 'scan-cases))
+  (when (uiop:directory-exists-p root)
+    (loop for subdir in (uiop:subdirectories root)
+          for case = (case-from-directory subdir)
+          when case collect case)))
 
 (defun case-id (case)
   "Stable URL-safe identifier for CASE. Deterministic: same
