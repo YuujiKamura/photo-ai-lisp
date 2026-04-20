@@ -15,8 +15,7 @@
 
 (defvar *case-root*
   (uiop:ensure-directory-pathname
-   (merge-pathnames "photo-ai-cases/"
-                    (uiop:getenv-pathname "USERPROFILE" :want-directory t)))
+   (merge-pathnames "demo/cases/" (uiop:getcwd)))
   "Root directory scanned for cases. Each immediate subdirectory is
    treated as one case. Configurable; tests rebind to a temp dir.")
 

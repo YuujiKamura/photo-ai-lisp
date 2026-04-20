@@ -1,7 +1,7 @@
 ;;; Startup:
 ;;;   (ql:quickload :photo-ai-lisp)
-;;;   (photo-ai-lisp:start)
-;;;   open http://localhost:8080/term
+;;;   (photo-ai-lisp:start :port 8090)
+;;;   open http://localhost:8090/
 
 (in-package #:photo-ai-lisp)
 
@@ -9,17 +9,25 @@
 
 (hunchentoot:define-easy-handler (home-page :uri "/") ()
   (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
-  (cl-who:with-html-output-to-string (out nil :prologue t)
-    (:html
-     (:head (:title "photo-ai-lisp"))
-     (:body
-      (:h1 "photo-ai-lisp")
-      (:p (:a :href "/term" "Open terminal"))))))
+  (home-handler))
 
-(defun start (&key (port 8080))
+(hunchentoot:define-easy-handler (cases-list-page :uri "/cases") ()
+  (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
+  (list-cases-handler))
+
+(defun case-view-handler-wrapper ()
+  (let* ((uri (hunchentoot:request-uri hunchentoot:*request*))
+         (id  (subseq uri 7)))
+    (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
+    (case-view-handler id)))
+
+(defun start (&key (port 8090))
   (unless *acceptor*
     (setf *acceptor*
-          (make-instance 'ws-easy-acceptor :port port))
+          (make-instance 'hunchentoot:easy-acceptor :port port))
+    ;; Prefix dispatcher for /cases/<id>
+    (pushnew (hunchentoot:create-prefix-dispatcher "/cases/" 'case-view-handler-wrapper)
+             hunchentoot:*dispatch-table*)
     (hunchentoot:start *acceptor*))
   *acceptor*)
 
