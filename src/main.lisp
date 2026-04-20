@@ -47,6 +47,31 @@
     (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
     (case-view-handler id)))
 
+(defun %cases-dispatch-wrapper ()
+  "Single dispatcher for all /cases/* requests.
+   POST .../input  → case-input-handler-wrapper (returns JSON)
+   GET  anything   → case-view-handler-wrapper  (returns HTML)"
+  (let* ((uri    (hunchentoot:request-uri hunchentoot:*request*))
+         (method (hunchentoot:request-method hunchentoot:*request*)))
+    (if (and (eq method :post)
+             (search "/input" uri))
+        ;; POST /cases/<id>/input
+        (let* ((without-prefix (subseq uri 7))      ; strip "/cases/"
+               (end (search "/input" without-prefix))
+               (id  (if end
+                        (subseq without-prefix 0 end)
+                        without-prefix))
+               (cmd (or (hunchentoot:post-parameter "cmd") "")))
+          (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
+          (let ((body (input-bridge-handler id cmd)))
+            (when (null *demo-session-id*)
+              (setf (hunchentoot:return-code*) 503))
+            body))
+        ;; GET /cases/<id>
+        (let ((id (subseq uri 7)))
+          (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
+          (case-view-handler id)))))
+
 (defvar *vendor-mime-types*
   '(("wasm" . "application/wasm")
     ("js"   . "application/javascript; charset=utf-8")
@@ -87,8 +112,8 @@
   (unless *acceptor*
     (setf *acceptor*
           (make-instance 'ws-easy-acceptor :port port))
-    ;; Prefix dispatcher for /cases/<id>
-    (pushnew (hunchentoot:create-prefix-dispatcher "/cases/" 'case-view-handler-wrapper)
+    ;; Prefix dispatcher for /cases/* (GET view + POST input, branched internally)
+    (pushnew (hunchentoot:create-prefix-dispatcher "/cases/" '%cases-dispatch-wrapper)
              hunchentoot:*dispatch-table*)
     ;; Prefix dispatcher for /vendor/ (ghostty-web bundle etc.).
     (pushnew (hunchentoot:create-prefix-dispatcher "/vendor/" 'vendor-handler)

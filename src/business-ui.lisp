@@ -131,6 +131,10 @@
       <pre>path: ~a
 reference: ~a
 masters:   ~a</pre>
+      <form method=\"post\" action=\"/cases/~a/input\">
+        <input type=\"hidden\" name=\"cmd\" value=\"echo hello from hub\">
+        <button type=\"submit\">Send ping</button>
+      </form>
     </div>
     <div class=\"term\">
       <iframe src=\"~a/shell?case=~a\"></iframe>
@@ -144,6 +148,7 @@ masters:   ~a</pre>
                   (or (and (photo-case-masters-dir c)
                            (namestring (photo-case-masters-dir c)))
                       "(none)")
+                  id
                   *ghostty-web-url*
                   encoded)))))
 
