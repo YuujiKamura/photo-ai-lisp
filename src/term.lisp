@@ -195,6 +195,19 @@
             (t (sleep 0.02))))
       (error () nil))))
 
+(defun %agent-picker-command ()
+  "Relative invocation of the platform-appropriate agent picker script.
+   Path is relative to the server's cwd (the repo root when launched via
+   scripts/demo.sh)."
+  (if (uiop:os-windows-p)
+      "scripts\\pick-agent.cmd"
+      "sh scripts/pick-agent.sh"))
+
+(defvar *auto-pick-agent*
+  (not (equal (uiop:getenv "DISABLE_AGENT_PICKER") "1"))
+  "When true, /ws/shell clients get the agent picker auto-injected on
+   connect. Flip to NIL or set DISABLE_AGENT_PICKER=1 to skip.")
+
 ;;; 2b — on connect: spawn child, start stdout pump thread.
 (defmethod hunchensocket:client-connected ((resource shell-resource)
                                             (client   shell-client))
@@ -205,7 +218,20 @@
               (bordeaux-threads:make-thread
                (lambda () (%stdout-pump client child))
                :name "shell-stdout-pump"))
-        (%register-shell-client client))
+        (%register-shell-client client)
+        ;; Auto-inject the agent picker after the shell banner settles.
+        (when *auto-pick-agent*
+          (bordeaux-threads:make-thread
+           (lambda ()
+             (sleep 0.4)
+             (ignore-errors
+               (let ((stdin (child-process-stdin child))
+                     (line  (format nil "~a~c~c"
+                                    (%agent-picker-command)
+                                    #\Return #\Newline)))
+                 (write-string line stdin)
+                 (finish-output stdin))))
+           :name "agent-picker-inject")))
     (error (e)
       (ignore-errors
         (hunchensocket:send-text-message
