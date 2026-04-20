@@ -71,7 +71,13 @@
           (sleep 0.5)
           ;; 3. HTTP inject — drakma URL-encodes the :parameters value once.
           (let ((url (format nil "http://127.0.0.1:~a/api/inject" port))
-                (text (format nil "echo ~a~c~c" sentinel #\Return #\Newline)))
+                ;; Bare LF — %normalize-child-input is idempotent over
+                ;; trailing Enter runs (see term.lisp), but using LF here
+                ;; keeps the fixture shape identical to the live picker-
+                ;; inject / xterm keystroke wire, so this e2e exercises
+                ;; the real byte path rather than relying on the
+                ;; normalizer's defensive collapse.
+                (text (format nil "echo ~a~c" sentinel #\Newline)))
             (multiple-value-bind (body status)
                 (%http-get url :parameters `(("text" . ,text)))
               (5am:is (eql 200 status)

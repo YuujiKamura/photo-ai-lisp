@@ -191,3 +191,171 @@
     (is (equalp #(120 121)
                  (photo-ai-lisp::%normalize-child-input in))
         "lone surrogates must be dropped")))
+
+;;; UT2j — regression locks for commit de778f7 (two bugs in src/term.lisp).
+;;;
+;;; Bug 1: %shell-argv returned bare '("cmd.exe") on Windows, bypassing
+;;;   %default-argv which wraps cmd under the conpty-bridge when the
+;;;   bridge binary is present. Effect: the /ws/shell child ran cmd.exe
+;;;   on raw pipes, so cmd saw LF (never the CR produced by
+;;;   %normalize-child-input) and set /p in pick-agent.cmd hung forever.
+;;;
+;;; Bug 2: the picker auto-inject built its line with "\r\n" as
+;;;   terminator. %normalize-child-input flips LF->CR, so that became
+;;;   "\r\r" — two Enter keystrokes. The second CR answered the very
+;;;   set /p "> " prompt the script opens, racing past the user's real
+;;;   digit and making the picker useless.
+
+;; %shell-argv on Windows must delegate to %default-argv.
+;; When the conpty-bridge binary exists, the argv must be
+;;   (list *conpty-bridge-path* "cmd.exe")
+;; not bare ("cmd.exe"). Stubbing *conpty-bridge-path* to this test
+;; file (guaranteed to exist) lets us simulate "bridge built".
+(test term-shell-argv-windows-uses-conpty-bridge-when-present
+  (if (uiop:os-windows-p)
+      (let* ((stub (namestring
+                    (merge-pathnames "tests/term-tests.lisp"
+                                     (asdf:system-source-directory
+                                      :photo-ai-lisp))))
+             (photo-ai-lisp::*conpty-bridge-path* stub)
+             (argv (photo-ai-lisp::%shell-argv)))
+        (is (equal (list stub "cmd.exe") argv)
+            "when the bridge path points at an existing file, %shell-argv ~
+             must return (bridge-path cmd.exe), proving it routes through ~
+             %default-argv instead of returning bare (cmd.exe)"))
+      (pass "non-Windows: %shell-argv uses bash, not relevant")))
+
+;; When the bridge binary is missing, %shell-argv must still fall back
+;; to bare "cmd.exe" via %default-argv's second cond arm — NOT error,
+;; NOT return the non-Windows bash form.
+(test term-shell-argv-windows-falls-back-to-cmd-when-bridge-missing
+  (if (uiop:os-windows-p)
+      (let* ((missing (namestring
+                       (merge-pathnames
+                        "tools/conpty-bridge/does-not-exist.exe"
+                        (asdf:system-source-directory :photo-ai-lisp))))
+             (photo-ai-lisp::*conpty-bridge-path* missing)
+             (argv (photo-ai-lisp::%shell-argv)))
+        (is (equal '("cmd.exe") argv)
+            "with the bridge path pointing at a non-existent file, ~
+             %shell-argv must fall back to bare ('cmd.exe') via ~
+             %default-argv — never error, never leak the bash form"))
+      (pass "non-Windows: bridge fallback path is not relevant")))
+
+;; %shell-argv must not be the bare-cmd literal on Windows when the
+;; bridge exists. This is the direct regression lock for bug 1 — the
+;; pre-fix body was literally (if (uiop:os-windows-p) '("cmd.exe") ...),
+;; which would make argv equal '("cmd.exe") even with a live bridge.
+(test term-shell-argv-not-unconditional-cmd-on-windows
+  (if (uiop:os-windows-p)
+      (let* ((stub (namestring
+                    (merge-pathnames "tests/term-tests.lisp"
+                                     (asdf:system-source-directory
+                                      :photo-ai-lisp))))
+             (photo-ai-lisp::*conpty-bridge-path* stub)
+             (argv (photo-ai-lisp::%shell-argv)))
+        (is-false (equal '("cmd.exe") argv)
+                  "with bridge present, %shell-argv must NOT collapse to ~
+                   bare ('cmd.exe') — that was the pre-de778f7 bug that ~
+                   broke ConPTY and pick-agent.cmd set /p handling"))
+      (pass "non-Windows branch not affected by bug 1")))
+
+;; Bug 2 lock, form-A: the picker inject builds its line with a single
+;; LF terminator, never CRLF. Replicate the exact expression used in
+;; term.lisp's client-connected :after body and assert its last char.
+(test term-picker-inject-line-ends-in-single-lf
+  (let ((line (format nil "~a~c"
+                      (photo-ai-lisp::%agent-picker-command)
+                      #\Newline)))
+    (is (char= #\Newline (char line (1- (length line))))
+        "picker inject line must end in a single LF — this is the exact ~
+         (format nil \"~~a~~c\" cmd #\\Newline) pattern used in ~
+         client-connected at term.lisp 280-282")
+    (when (>= (length line) 2)
+      (is-false (char= #\Return (char line (- (length line) 2)))
+                "picker inject line must NOT have a CR immediately before ~
+                 the LF — CRLF here becomes CR CR after %normalize-child-input ~
+                 and answers set /p before the user types"))))
+
+;; Bug 2 lock, form-B: after normalization, the picker line ends in
+;; exactly one CR byte and NOT two. Demonstrates the wire effect of the
+;; fix — a single Enter keystroke reaches cmd.exe, not two.
+(test term-picker-inject-normalized-ends-in-single-cr
+  (let* ((line (format nil "~a~c"
+                       (photo-ai-lisp::%agent-picker-command)
+                       #\Newline))
+         (bytes (photo-ai-lisp::%normalize-child-input line))
+         (n     (length bytes)))
+    (is (plusp n) "normalized picker line must be non-empty")
+    (is (= 13 (aref bytes (1- n)))
+        "last byte of the normalized picker line must be CR (13) — ~
+         that is the one Enter keystroke ConPTY needs to fire ~
+         pick-agent.cmd's first line")
+    (when (>= n 2)
+      (is-false (= 13 (aref bytes (- n 2)))
+                "byte before the trailing CR must NOT also be CR — two ~
+                 consecutive CRs would mean the inject sent two Enters, ~
+                 which races past set /p in pick-agent.cmd (the exact ~
+                 regression fixed in de778f7)"))))
+
+;; Bug 2 lock, form-C: the normalizer is idempotent for trailing Enter
+;; shapes. Any of LF, CR, CRLF, LFLF, CRCR collapses to exactly one CR
+;; byte. This is the class-level fix (see inject-contract-audit.md):
+;; callers no longer need to memorize which terminator the wire wants,
+;; and the preset-button / /api/inject paths that still hard-code CRLF
+;; are now safe against the same race.
+(test term-picker-inject-terminator-is-one-byte-not-two
+  (let* ((cmd      (photo-ai-lisp::%agent-picker-command))
+         (+lf      (photo-ai-lisp::%normalize-child-input
+                    (format nil "~a~c" cmd #\Newline)))
+         (+cr      (photo-ai-lisp::%normalize-child-input
+                    (format nil "~a~c" cmd #\Return)))
+         (+crlf    (photo-ai-lisp::%normalize-child-input
+                    (format nil "~a~c~c" cmd #\Return #\Newline)))
+         (+lflf    (photo-ai-lisp::%normalize-child-input
+                    (format nil "~a~c~c" cmd #\Newline #\Newline)))
+         (+crcr    (photo-ai-lisp::%normalize-child-input
+                    (format nil "~a~c~c" cmd #\Return #\Return))))
+    (is (= (1+ (length cmd)) (length +lf))
+        "LF terminator normalizes to cmd + one CR")
+    (is (equalp +lf +cr)
+        "CR and LF terminators must produce identical byte vectors — ~
+         LF->CR rule collapses them to the same shape")
+    (is (equalp +lf +crlf)
+        "CRLF (the UI preset-button / old picker-inject shape) must ~
+         normalize identically to LF alone — this is the load-bearing ~
+         invariant that kills the class of double-CR races")
+    (is (equalp +lf +lflf)
+        "LFLF must also collapse to one CR — consecutive-CR folding ~
+         covers any caller that sends two LFs for emphasis")
+    (is (equalp +lf +crcr)
+        "CRCR (the pre-fix picker-inject wire shape) must collapse to ~
+         one CR — regression lock for commit de778f7")))
+
+;; Class-wide idempotency regression test: the raw three-case table
+;; from inject-contract-audit.md. Decouples the invariant from
+;; %agent-picker-command so a future helper rename doesn't hide a
+;; normalizer regression.
+(test term-normalize-collapses-consecutive-crs
+  (let ((a\r\nb (photo-ai-lisp::%normalize-child-input
+                 (coerce (list #\a #\Return #\Newline #\b) 'string)))
+        (a\n\n (photo-ai-lisp::%normalize-child-input
+                (coerce (list #\a #\Newline #\Newline) 'string)))
+        (a\r\r (photo-ai-lisp::%normalize-child-input
+                (coerce (list #\a #\Return #\Return) 'string))))
+    (is (equalp #(97 13 98) a\r\nb)
+        "a<CRLF>b normalizes to 3 bytes: 'a', one CR, 'b'")
+    (is (equalp #(97 13) a\n\n)
+        "a<LFLF> normalizes to 2 bytes: 'a', one CR")
+    (is (equalp #(97 13) a\r\r)
+        "a<CRCR> normalizes to 2 bytes: 'a', one CR"))
+  ;; 4-byte double-CRLF: textarea paste of two blank lines is the most
+  ;; common real-world way to feed a 4-char Enter run to the normalizer.
+  (let ((a\r\n\r\n (photo-ai-lisp::%normalize-child-input
+                    (coerce (list #\a #\Return #\Newline
+                                  #\Return #\Newline)
+                            'string))))
+    (is (equalp #(97 13) a\r\n\r\n)
+        "a<CRLF><CRLF> (four-byte double-CRLF from e.g. a textarea ~
+         paste) normalizes to exactly 2 bytes — the collapse must ~
+         span runs longer than 2 as well, not only adjacent pairs")))

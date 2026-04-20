@@ -56,30 +56,48 @@
     (setf *shell-clients* (remove client *shell-clients*))))
 
 (defun %normalize-child-input (s)
-  "Normalize S for writing to the child's stdin. Two transforms:
+  "Normalize S for writing to the child's stdin. Three transforms:
 
     - Drop any char whose code does not fit latin-1 (>#xFF). The
-      child stream is opened :element-type '(unsigned-byte 8) so
-      everything outside that range must be filtered.
+      child stream round-trips bytes via :external-format :latin-1
+      (see spawn-child docstring), so everything outside that range
+      has no lossless representation and must be filtered.
 
     - Translate LF (code 10) to CR (code 13). When the child is
       running under our ConPTY bridge, cmd.exe only treats CR as
       the Enter key — bare LF is just a control char it buffers and
       never executes. Callers on the WebSocket side send LF because
       hunchensocket crashes 1011 on a bare-CR text frame (see the
-      term.onData replace in /shell), so we flip it back here."
-  (let ((buf (make-array (length s) :element-type '(unsigned-byte 8) :fill-pointer 0)))
+      term.onData replace in /shell), so we flip it back here.
+
+    - Collapse any run of consecutive CRs down to a single CR. Any
+      caller that terminates a line with CRLF, LFLF, or CRCR ends up
+      emitting two CRs otherwise — and when a set /p (or any other
+      single-line reader) is live on the child, the second CR silently
+      answers it with empty input. See the picker-inject race fixed in
+      commit de778f7. Making the normalizer idempotent here defends
+      every caller against that class at once, so callers don't need
+      to memorize which terminator the wire expects."
+  (let ((buf (make-array (length s) :element-type '(unsigned-byte 8)
+                                    :fill-pointer 0 :adjustable t))
+        (prev-cr nil))
     (loop for c across s
           for code = (char-code c)
           when (<= code #xFF)
-            do (vector-push-extend (if (= code 10) 13 code) buf))
+            do (let ((b (if (= code 10) 13 code)))
+                 (unless (and prev-cr (= b 13))
+                   (vector-push-extend b buf))
+                 (setf prev-cr (= b 13))))
     buf))
 
 (defun shell-broadcast-input (text)
   "Write TEXT to the child stdin of every connected shell client.
    Returns the number of clients reached. TEXT is recorded in the
-   trace ring as :in (dir) for observability. LF is translated to
-   CR so ConPTY-backed children receive a real Enter keystroke."
+   trace ring as :in (dir) for observability. The terminator contract
+   is intentionally forgiving: callers may send LF, CR, CRLF, LFLF,
+   or CRCR and %normalize-child-input collapses any run to a single
+   CR (one Enter). Callers don't need to know which terminator the
+   wire expects."
   (let ((recipients (bordeaux-threads:with-lock-held (*shell-clients-lock*)
                       (copy-list *shell-clients*))))
     (shell-trace-record :in text)
