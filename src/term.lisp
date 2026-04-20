@@ -274,59 +274,66 @@
 <head>
   <meta charset=\"utf-8\">
   <title>shell</title>
-  <link rel=\"stylesheet\" href=\"https://unpkg.com/xterm@5.3.0/css/xterm.css\" />
   <style>
     html, body { background: #1e1e1e; margin: 0; padding: 0; height: 100%; }
-    #terminal { padding: 8px; }
+    #terminal { width: 100%; height: 100%; }
   </style>
 </head>
 <body>
   <div id=\"terminal\"></div>
-  <script src=\"https://unpkg.com/xterm@5.3.0/lib/xterm.js\"></script>
-  <script>
-    const term = new Terminal({
-      cursorBlink: true,
-      fontFamily: 'Menlo, Consolas, monospace',
-      fontSize: 14,
-      theme: { background: '#1e1e1e' }
-    });
-    term.open(document.getElementById('terminal'));
-    term.write('\\x1b[33m[connecting to shell subprocess...]\\x1b[0m\\r\\n');
+  <script type=\"module\">
+    // Renderer: ghostty-web WASM bundle served from /vendor/ by the Lisp hub.
+    // PTY lives on the Lisp side at /ws/shell. Keep the protocol dumb so
+    // /api/inject and the picker auto-inject (term.lisp client-connected)
+    // both continue to reach this PTY without a separate node daemon.
+    import { init, Terminal, FitAddon } from '/vendor/ghostty-web.js';
+    await init();
 
-    var ws = null;
-    var reconnectDelay = 500;
+    const term = new Terminal({
+      cols: 80, rows: 24,
+      fontFamily: 'JetBrains Mono, Consolas, monospace',
+      fontSize: 14,
+      theme: { background: '#1e1e1e', foreground: '#d4d4d4' },
+    });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    const container = document.getElementById('terminal');
+    await term.open(container);
+    fit.fit();
+    fit.observeResize();
+    // Ghostty-web renders into a canvas; without explicit focus the iframe
+    // swallows keystrokes. Re-grab focus on any pointer event so clicking
+    // anywhere in the terminal area always routes keys to the PTY.
+    term.focus();
+    container.addEventListener('pointerdown', () => term.focus());
+    window.addEventListener('focus', () => term.focus());
+
+    let ws = null, reconnectDelay = 500;
     function connect() {
       ws = new WebSocket('ws://' + location.host + '/ws/shell');
-      ws.binaryType = 'arraybuffer';
-      ws.onopen = function() {
-        reconnectDelay = 500;
-        term.write('\\x1b[32m[connected]\\x1b[0m\\r\\n');
-      };
-      ws.onclose = function() {
+      ws.onopen = () => { reconnectDelay = 500; };
+      ws.onmessage = (e) => { term.write(e.data); };
+      ws.onclose = () => {
         term.write('\\r\\n\\x1b[31m[disconnected — retrying]\\x1b[0m\\r\\n');
         setTimeout(connect, reconnectDelay);
         reconnectDelay = Math.min(reconnectDelay * 2, 5000);
       };
-      ws.onerror = function() {
-        term.write('\\r\\n\\x1b[31m[ws error]\\x1b[0m\\r\\n');
-      };
-      ws.onmessage = function(e) {
-        term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data));
-      };
+      ws.onerror = () => { term.write('\\r\\n\\x1b[31m[ws error]\\x1b[0m\\r\\n'); };
     }
     connect();
 
-    term.onData(function(data) {
+    term.onData((data) => {
       if (ws && ws.readyState === WebSocket.OPEN) ws.send(data);
     });
 
-    // Kept as a fallback: accept postMessage from parent to inject text.
-    // The main UI now uses /api/inject, so this is only for legacy callers.
-    window.addEventListener('message', function(ev) {
-      var msg = ev.data;
-      if (!msg || msg.type !== 'inject' || typeof msg.data !== 'string') return;
+    // Legacy: parent pages can still postMessage inject text directly.
+    // The primary path is /api/inject (Lisp broadcasts to every /ws/shell),
+    // but keeping this lets hot-swapped UIs talk to us without a fetch round-trip.
+    window.addEventListener('message', (ev) => {
+      const m = ev.data;
+      if (!m || m.type !== 'inject' || typeof m.data !== 'string') return;
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(msg.data);
+      ws.send(m.data);
     });
   </script>
 </body>

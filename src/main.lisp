@@ -47,12 +47,51 @@
     (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
     (case-view-handler id)))
 
+(defvar *vendor-mime-types*
+  '(("wasm" . "application/wasm")
+    ("js"   . "application/javascript; charset=utf-8")
+    ("css"  . "text/css; charset=utf-8")
+    ("map"  . "application/json; charset=utf-8"))
+  "Ext -> Content-Type for assets under /vendor/. Hunchentoot's stock
+   folder-dispatcher falls back to application/octet-stream for .wasm,
+   which the browser refuses for streaming instantiation.")
+
+(defun %vendor-content-type (pathname)
+  (let* ((ext (or (pathname-type pathname) ""))
+         (mime (cdr (assoc ext *vendor-mime-types* :test #'string-equal))))
+    (or mime "application/octet-stream")))
+
+(defun vendor-handler ()
+  "Serve files under static/vendor/ with correct MIME types.
+   Needed because ghostty-web.wasm must be delivered as application/wasm
+   for WebAssembly.instantiateStreaming. Blocks path traversal."
+  (let* ((uri       (hunchentoot:script-name hunchentoot:*request*))
+         (rel       (subseq uri (length "/vendor/")))
+         (safe-rel  (remove-if (lambda (c) (char= c #\\)) rel))
+         (root      (merge-pathnames "static/vendor/" (uiop:getcwd)))
+         (path      (merge-pathnames safe-rel root))
+         (truename  (ignore-errors (uiop:truename* path)))
+         (root-true (uiop:truename* root)))
+    (cond
+      ((or (null truename)
+           (search ".." safe-rel)
+           (not (uiop:subpathp truename root-true)))
+       (setf (hunchentoot:return-code*) 404)
+       "not found")
+      (t
+       (setf (hunchentoot:content-type*) (%vendor-content-type truename))
+       (hunchentoot:handle-static-file truename
+                                       (%vendor-content-type truename))))))
+
 (defun start (&key (port 8090))
   (unless *acceptor*
     (setf *acceptor*
           (make-instance 'ws-easy-acceptor :port port))
     ;; Prefix dispatcher for /cases/<id>
     (pushnew (hunchentoot:create-prefix-dispatcher "/cases/" 'case-view-handler-wrapper)
+             hunchentoot:*dispatch-table*)
+    ;; Prefix dispatcher for /vendor/ (ghostty-web bundle etc.).
+    (pushnew (hunchentoot:create-prefix-dispatcher "/vendor/" 'vendor-handler)
              hunchentoot:*dispatch-table*)
     (hunchentoot:start *acceptor*))
   *acceptor*)

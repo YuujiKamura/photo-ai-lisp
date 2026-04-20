@@ -20,10 +20,12 @@
    treated as one case. Configurable; tests rebind to a temp dir.")
 
 (defvar *ghostty-web-url* (or (uiop:getenv "GHOSTTY_WEB_URL") "/shell")
-  "URL for the terminal iframe. Defaults to '/shell' — the built-in
-   xterm.js page backed by /ws/shell on this server — so the package
-   is self-contained. Set GHOSTTY_WEB_URL to point at an external
-   ghostty-web daemon (e.g. http://localhost:3000) instead.")
+  "URL for the terminal iframe. Defaults to '/shell' — this server's own
+   page, which renders via the ghostty-web WASM bundle vendored under
+   static/vendor/ and connects back to /ws/shell (Lisp-owned PTY). Keeps
+   the whole terminal story in one Lisp process: /api/inject, the agent
+   picker auto-inject, and Swank hot-reload all reach the same PTY.
+   Set GHOSTTY_WEB_URL to override with an external daemon if needed.")
 
 ;; ---- case scan + id ------------------------------------------------------
 

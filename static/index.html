@@ -84,10 +84,6 @@
     <div class="hint">curl /api/inject?text=... で外部からコマンド送信</div>
   </div>
   <div>
-    <h2>工種マスタ</h2>
-    <div id="masterList" class="placeholder">(読込中)</div>
-  </div>
-  <div>
     <h2>プリセット</h2>
     <div id="presetList" class="placeholder">(読込中)</div>
   </div>
@@ -100,9 +96,16 @@
 <script>
   // Terminal iframe — ghostty-web URL (or built-in /shell) injected by Lisp server.
   const ghosttyUrl = document.documentElement.dataset.ghosttyUrl;
+  const termFrame = document.getElementById('terminal');
   if (ghosttyUrl) {
-    document.getElementById('terminal').src = ghosttyUrl;
+    termFrame.src = ghosttyUrl;
   }
+  // Iframed ghostty-web renders into a hidden textarea for IME input.
+  // That textarea only receives keystrokes when the iframe's window holds
+  // focus — which it doesn't on first load (the parent document does).
+  // Pull focus into the iframe once it's ready, and re-pull on window focus.
+  termFrame.addEventListener('load', () => termFrame.contentWindow.focus());
+  window.addEventListener('focus', () => termFrame.contentWindow.focus());
 
   // Preset buttons: click posts to /api/inject. Server broadcasts to all
   // connected /ws/shell sessions, including the iframe below. This is the
@@ -112,64 +115,36 @@
     fetch('/api/inject?text=' + encodeURIComponent(text))
       .catch(err => console.error('inject failed', err));
   }
-  (function loadPresets() {
-    const target = document.getElementById('presetList');
-    if (!target) return;
-    fetch('/api/presets')
-      .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
-      .then(presets => {
-        if (!Array.isArray(presets) || presets.length === 0) {
-          target.textContent = '(無し)';
-          return;
-        }
-        target.classList.remove('placeholder');
-        target.innerHTML = '';
-        presets.forEach(p => {
-          const b = document.createElement('button');
-          b.className = 'btn';
-          b.textContent = p.name;
-          b.title = (p.argv || []).join(' ');
-          b.addEventListener('click', () => runPreset(p.name, p.argv));
-          target.appendChild(b);
-        });
-      })
-      .catch(err => { target.textContent = '(読込失敗: ' + err.message + ')'; });
-  })();
-
-  // Master CSV display.
-  (function loadMasters() {
-    const target = document.getElementById('masterList');
-    if (!target) return;
-    fetch('/api/masters')
-      .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
-      .then(files => {
-        if (!Array.isArray(files) || files.length === 0) {
-          target.textContent = '(空)';
-          return;
-        }
-        target.classList.remove('placeholder');
-        target.innerHTML = '';
-        files.forEach(f => {
-          const g = document.createElement('div');
-          g.className = 'master-group';
-          const h = document.createElement('div');
-          h.className = 'head';
-          h.textContent = f.file;
-          g.appendChild(h);
-          const ul = document.createElement('ul');
-          (f.rows || []).forEach(r => {
-            const li = document.createElement('li');
-            li.textContent = '├ ' + (r.label_ja || r.id);
-            li.title = r.id + (r.aliases && r.aliases.length
-              ? ' [' + r.aliases.join(', ') + ']' : '');
-            ul.appendChild(li);
-          });
-          g.appendChild(ul);
-          target.appendChild(g);
-        });
-      })
-      .catch(err => { target.textContent = '(読込失敗: ' + err.message + ')'; });
-  })();
+  // Hot-swap hook: reload presets without a full page refresh whenever the
+  // server signals /api/reload (Swank-driven). Cheap polling is fine for now;
+  // swap for a /ws/control push channel when the reload rate justifies it.
+  let lastPresetEtag = '';
+  async function refreshPresets() {
+    try {
+      const r = await fetch('/api/presets', { cache: 'no-store' });
+      if (!r.ok) return;
+      const etag = r.headers.get('etag') || '';
+      const presets = await r.json();
+      const body = JSON.stringify(presets);
+      if (body === lastPresetEtag) return;
+      lastPresetEtag = body;
+      const target = document.getElementById('presetList');
+      target.classList.remove('placeholder');
+      target.innerHTML = '';
+      (presets || []).forEach(p => {
+        const b = document.createElement('button');
+        b.className = 'btn';
+        b.textContent = p.name;
+        b.title = (p.argv || []).join(' ');
+        b.addEventListener('click', () => runPreset(p.name, p.argv));
+        target.appendChild(b);
+      });
+    } catch (_) { /* transient; retry next tick */ }
+  }
+  // Initial fill + steady polling. 2s is well under human perception of
+  // "this didn't update" and keeps the server load trivial.
+  refreshPresets();
+  setInterval(refreshPresets, 2000);
 </script>
 
 </body>
