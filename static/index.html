@@ -21,33 +21,25 @@
     --input-bg: #15151a;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
   body {
     font-family: -apple-system, 'Segoe UI', sans-serif;
     background: var(--bg); color: var(--text);
-    height: 100vh; display: flex; flex-direction: column;
+    display: flex;
   }
-  .header {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 16px; border-bottom: 1px solid var(--border);
-    background: var(--surface);
-  }
-  .logo {
-    width: 24px; height: 24px; border-radius: 6px;
-    background: var(--accent); color: white;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 700;
-  }
-  .header h1 { font-size: 14px; font-weight: 600; }
-  .header .hint {
-    margin-left: auto; font-size: 11px; color: var(--text-muted);
-  }
-
-  .main { flex: 1; display: flex; min-height: 0; }
 
   .sidebar {
     width: 280px; padding: 12px;
     border-right: 1px solid var(--border);
     overflow-y: auto; display: flex; flex-direction: column; gap: 16px;
+    flex-shrink: 0;
+  }
+  .sidebar .brand {
+    font-size: 14px; font-weight: 700; color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .sidebar .hint {
+    font-size: 10px; color: var(--text-muted); line-height: 1.4;
   }
   .sidebar h2 {
     font-size: 11px; text-transform: uppercase;
@@ -86,30 +78,24 @@
 </head>
 <body>
 
-<header class="header">
-  <div class="logo">P</div>
-  <h1>photo-ai-lisp</h1>
-  <span class="hint">curl /api/inject?text=... で外部からコマンド送信</span>
-</header>
+<aside class="sidebar">
+  <div>
+    <div class="brand">photo-ai-lisp</div>
+    <div class="hint">curl /api/inject?text=... で外部からコマンド送信</div>
+  </div>
+  <div>
+    <h2>工種マスタ</h2>
+    <div id="masterList" class="placeholder">(読込中)</div>
+  </div>
+  <div>
+    <h2>プリセット</h2>
+    <div id="presetList" class="placeholder">(読込中)</div>
+  </div>
+</aside>
 
-<div class="main">
-
-  <aside class="sidebar">
-    <div>
-      <h2>工種マスタ</h2>
-      <div id="masterList" class="placeholder">(読込中)</div>
-    </div>
-    <div>
-      <h2>プリセット</h2>
-      <div id="presetList" class="placeholder">(読込中)</div>
-    </div>
-  </aside>
-
-  <section class="terminal">
-    <iframe id="terminal" src="about:blank"></iframe>
-  </section>
-
-</div>
+<section class="terminal">
+  <iframe id="terminal" src="about:blank"></iframe>
+</section>
 
 <script>
   // Terminal iframe — ghostty-web URL (or built-in /shell) injected by Lisp server.
