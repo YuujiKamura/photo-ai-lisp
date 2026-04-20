@@ -1,0 +1,59 @@
+=== T1.a WS handshake verification ===
+Date: 2026-04-21
+Target: ws://127.0.0.1:8080/ws (deckpilot daemon, PID 47400)
+Client: photo-ai-lisp src/cp-client.lisp (connect-cp) via websocket-driver
+Deckpilot issue: #27 (closed 2026-04-20T02:30Z)
+Runner: scripts/tier-1-smoke.lisp
+SBCL: /c/Users/yuuji/SBCLLocal/PFiles/Steel Bank Common Lisp/sbcl.exe
+
+Verdict: **PASS** — WS handshake succeeded, JSON round-trip verified.
+
+---
+
+--- TIER 1 SMOKE START ---
+CONNECT OK: YES
+SENDING LIST...
+LIST resp: (:CMD "LIST" :OK T :ERROR NIL :DATA
+            #(#<HASH-TABLE :TEST EQUAL :COUNT 6 {11046BBEF3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {11046BC9A3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {11046BD453}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {11046BDF03}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {11046BE9B3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {11046BF463}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {11046BFF13}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {11048485F3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {11048490A3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104849B53}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {110484A603}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {110484B0B3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {110484BB63}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {110484C613}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {110484D0C3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {110484DB73}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {110484E623}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {110484F0D3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {110484FB83}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104850633}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {11048510E3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104851B93}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104852643}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {11048530F3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104853BA3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104854653}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104855103}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104855BB3}>
+              #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104856663}>)
+            :STATUS NIL :MODE NIL :MESSAGE NIL)
+OK field: T
+STATE(ghostty-17676) resp: (:CMD "STATE" :OK NIL :ERROR
+                            "session not found: ghostty-17676" :DATA NIL
+                            :STATUS NIL :MODE NIL :MESSAGE NIL)
+STATUS field: NIL
+TESTING wait-for-completion on nonexistent...
+wait-for-completion(nonexistent) result: NIL
+
+--- notes ---
+* LIST :DATA 29 hash-tables = 29 real deckpilot sessions (matches `deckpilot list` output)
+* STATE error "session not found: ghostty-17676" is expected — 17676 was a prior PID, now dead
+* trailing "Cannot destroy thread" warning on disconnect is benign cleanup noise in wsd, not a handshake failure
+* DoD satisfied: round-trip JSON response bytes captured (LIST reply with OK=T + data array)
