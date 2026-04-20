@@ -597,13 +597,16 @@ of scope.
             interpolating that parameter). De-facto complete before Track T.
       Est: 1-2h · Agent hint: Claude Sonnet
 
-- [ ] **T2.b** CP INPUT trigger button on case view
+- [x] **T2.b** CP INPUT trigger button on case view
       Implements: `src/business-ui.lisp`, `src/cp-ui-bridge.lisp` (new)
       Deps: T2.a, T1.b · Branch: `feat/t2b-input-button`
       DoD: a `<form method=post>` button on `/cases/:id` sends a
            fixed command (e.g. `echo hello from hub`) to the fixed agent
            via `pipeline-cp:send-input`; server returns 200.
       Est: 2h · Agent hint: Claude Sonnet | Codex
+      Done: 2026-04-21 — cp-ui-bridge.lisp + POST /cases/:id/input dispatcher;
+            *demo-session-id* nil guard returns 503; :mock-client fallback for
+            offline tests; 2 new FiveAM specs (nil-session + with-session).
 
 - [ ] **T2.c** fixed single-agent session selection
       Implements: `scripts/boot-hub.lisp` (spawn one claude session via
