@@ -24,6 +24,18 @@
       (ql:quickload :photo-ai-lisp :silent t)
       (uiop:symbol-call :photo-ai-lisp :start :port 8090)
       (format t "SERVER http://localhost:8090/~%")
+      ;; Optional: Swank for SLIME hot-reload workflow.
+      ;; Loaded lazily so the default install does not require swank.
+      ;; Disable with NO_SWANK=1.
+      (unless (equal (uiop:getenv "NO_SWANK") "1")
+        (handler-case
+            (progn
+              (ql:quickload :swank :silent t)
+              (funcall (uiop:find-symbol* :create-server :swank)
+                       :port 4005 :dont-close t)
+              (format t "SWANK localhost:4005 (slime-connect)~%"))
+          (error (c)
+            (format t "(swank unavailable: ~a)~%" c))))
       (finish-output)
 
       ;; Install SIGINT handler so Ctrl-C shuts down cleanly.

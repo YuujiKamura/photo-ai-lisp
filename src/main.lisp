@@ -27,6 +27,11 @@
   (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
   (shell-trace-handler))
 
+(hunchentoot:define-easy-handler (reload-page :uri "/api/reload") ()
+  (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
+  (let ((module (hunchentoot:get-parameter "module")))
+    (reload-handler module)))
+
 (defun case-view-handler-wrapper ()
   (let* ((uri (hunchentoot:request-uri hunchentoot:*request*))
          (id  (subseq uri 7)))

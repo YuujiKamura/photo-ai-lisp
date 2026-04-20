@@ -62,6 +62,69 @@
       "%DATE%"
       "+%Y-%m-%dT%H:%M:%S"))
 
+;; ---- hot reload ----------------------------------------------------------
+
+(defvar *reloadable-modules*
+  '(:presets :business-ui :term :main)
+  "Source module keywords that /api/reload can hot-swap. Keys map to
+   files under src/ via the naming convention src/<key>.lisp.")
+
+(defun %src-path (key)
+  "Pathname to src/<key>.lisp relative to the running image's cwd."
+  (merge-pathnames
+   (format nil "src/~a.lisp" (string-downcase (symbol-name key)))
+   (uiop:getcwd)))
+
+(defun reload-module (key)
+  "Reload one source file by keyword (e.g. :presets → src/presets.lisp).
+   Returns (:ok :module K :elapsed-ms N). Signals if KEY is not in
+   *reloadable-modules* or if the file fails to compile/load."
+  (let ((k (intern (string-upcase (string key)) :keyword)))
+    (unless (member k *reloadable-modules*)
+      (error "module ~a not in *reloadable-modules*" k))
+    (let* ((path (%src-path k))
+           (start (get-internal-real-time)))
+      (unless (uiop:file-exists-p path)
+        (error "source file not found: ~a" path))
+      (load path)
+      (let ((elapsed-ms
+              (floor (* 1000 (/ (- (get-internal-real-time) start)
+                                internal-time-units-per-second)))))
+        (list :ok t :module k :elapsed-ms elapsed-ms)))))
+
+(defun reload-all-modules ()
+  "Reload every module in *reloadable-modules* in declared order.
+   Returns (:ok :modules (...) :elapsed-ms N)."
+  (let ((start (get-internal-real-time)))
+    (dolist (k *reloadable-modules*)
+      (reload-module k))
+    (list :ok t
+          :modules *reloadable-modules*
+          :elapsed-ms (floor (* 1000 (/ (- (get-internal-real-time) start)
+                                        internal-time-units-per-second))))))
+
+(defun reload-handler (module-or-nil)
+  "HTTP handler body for /api/reload?module=NAME (nil = all)."
+  (handler-case
+      (let* ((result (if (and module-or-nil (plusp (length module-or-nil)))
+                         (reload-module module-or-nil)
+                         (reload-all-modules)))
+             (modules (getf result :modules))
+             (mod     (getf result :module)))
+        (format nil
+                "{\"ok\":true,\"elapsed_ms\":~a~a}"
+                (getf result :elapsed-ms)
+                (cond
+                  (modules
+                   (format nil ",\"modules\":[~{\"~(~a~)\"~^,~}]"
+                           modules))
+                  (mod
+                   (format nil ",\"module\":\"~(~a~)\"" mod))
+                  (t ""))))
+    (error (e)
+      (format nil "{\"ok\":false,\"error\":\"~a\"}"
+              (%json-escape (princ-to-string e))))))
+
 ;; ---- HTTP handler --------------------------------------------------------
 
 (defun list-presets-handler ()

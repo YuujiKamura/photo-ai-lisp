@@ -35,6 +35,8 @@ Windows コマンドプロンプトからは `scripts\demo.cmd`。
 | `GET /` | メイン UI |
 | `GET /api/masters` | `masters/*.csv` を JSON で返す |
 | `GET /api/presets` | 登録済みプリセット一覧（UI が起動時に読む） |
+| `GET /api/shell-trace` | /ws/shell を流れた直近 100 フレームの ring buffer |
+| `GET /api/reload?module=<key>` | サーバ無停止で `src/<key>.lisp` 再読込 |
 | `GET /shell` | 内蔵ターミナル（xterm.js + /ws/shell） |
 | `GET /cases` | ケース一覧（JSON） |
 | `GET /cases/:id` | ケース詳細（HTML） |
@@ -47,7 +49,19 @@ Windows コマンドプロンプトからは `scripts\demo.cmd`。
 (defpreset "hello" "echo" "hello" "from" "photo-ai-lisp")
 ```
 
-argv は「そのままターミナルに打つ安全なコマンド」の想定。REPL 再評価で即反映（サーバ再起動不要）。
+argv は「そのままターミナルに打つ安全なコマンド」の想定。
+
+## ホットリロード
+
+サーバ停止なしでコード変更を反映する手段が 2 つ：
+
+1. `curl http://localhost:8090/api/reload?module=presets`
+   → `src/presets.lisp` を `load` し直す（10〜50ms）。プリセット追加・修正が即 UI に反映
+   → `module=all` で全 `*reloadable-modules*` を順次再読込
+
+2. `scripts/demo.sh` は起動時に swank を port 4005 で立てる（失敗しても続行）。
+   Emacs から `M-x slime-connect localhost 4005` で接続してそのまま式評価が可能。
+   `NO_SWANK=1` で無効化。
 
 ## ディレクトリ
 
