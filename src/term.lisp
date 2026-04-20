@@ -138,7 +138,10 @@
                 out)))))
 
 (defun shell-trace-record (dir message)
-  "Append one trace entry. DIR is :in or :out. MESSAGE is the string."
+  "Append one trace entry. DIR is :in (bytes written to child stdin),
+   :out (bytes read from child stdout), or :meta (observability markers
+   from internal plumbing such as picker auto-inject). MESSAGE is the
+   string."
   (bordeaux-threads:with-lock-held (*shell-trace-lock*)
     (push (list :ts (%iso-now)
                 :dir dir
@@ -172,8 +175,14 @@
                                   (%json-escape (getf e :preview)))))))
 
 (defun %shell-argv ()
+  ;; On Windows, route through %default-argv so cmd.exe runs under the
+  ;; conpty-bridge (real ConPTY). Without the bridge, cmd sees piped
+  ;; stdin and LF is the only line terminator it honors — contradicting
+  ;; %normalize-child-input's LF->CR rewrite and breaking pick-agent.cmd
+  ;; auto-inject. %default-argv falls back to bare cmd.exe if the bridge
+  ;; binary is missing.
   (if (uiop:os-windows-p)
-      '("cmd.exe")
+      (%default-argv)
       (list "/bin/bash" "--norc" "--noprofile")))
 
 (defun %scrub-for-utf8 (s)
@@ -259,13 +268,25 @@
           (bordeaux-threads:make-thread
            (lambda ()
              (sleep 0.4)
-             (ignore-errors
-               (let ((stdin (child-process-stdin child))
-                     (line  (format nil "~a~c~c"
-                                    (%agent-picker-command)
-                                    #\Return #\Newline)))
-                 (write-sequence (%normalize-child-input line) stdin)
-                 (finish-output stdin))))
+             (shell-trace-record :meta "[picker-inject:enter]")
+             (handler-case
+                 (let ((stdin (child-process-stdin child))
+                       ;; Single LF only. %normalize-child-input flips it
+                       ;; to CR (one Enter) so cmd runs the batch and set/p
+                       ;; inside pick-agent.cmd keeps blocking for the
+                       ;; user's actual choice. Sending \r\n (= \r\r after
+                       ;; normalize) races ahead and answers set/p with an
+                       ;; empty line before the user can press a digit.
+                       (line  (format nil "~a~c"
+                                      (%agent-picker-command)
+                                      #\Newline)))
+                   (write-sequence (%normalize-child-input line) stdin)
+                   (finish-output stdin)
+                   (shell-trace-record :meta "[picker-inject:wrote]"))
+               (error (e)
+                 (shell-trace-record
+                  :meta (format nil "[picker-inject:ERR ~a ~a]"
+                                (type-of e) e)))))
            :name "agent-picker-inject")))
     (error (e)
       (ignore-errors
