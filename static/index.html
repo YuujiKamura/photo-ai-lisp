@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <!--
-  Adapted from: photo-ai-rust/web/index.html (3-pane layout skeleton).
-  This is a slim port — original is 75 KB / 1857 lines with full business
-  logic. Here we replicate structure only; behavior is added incrementally.
+  Adapted from: photo-ai-rust/web/index.html (structure only).
+  Stripped to the minimum that actually works: header + left sidebar
+  (masters + presets) + terminal iframe. Disabled-button mocks and
+  unimplemented tabs have been removed to avoid lying to the user
+  about what's wired.
 -->
 <html lang="ja">
 <head>
@@ -36,55 +38,49 @@
     font-weight: 700;
   }
   .header h1 { font-size: 14px; font-weight: 600; }
+  .header .hint {
+    margin-left: auto; font-size: 11px; color: var(--text-muted);
+  }
 
   .main { flex: 1; display: flex; min-height: 0; }
 
   .sidebar {
-    width: 260px; padding: 12px;
+    width: 280px; padding: 12px;
     border-right: 1px solid var(--border);
-    overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+    overflow-y: auto; display: flex; flex-direction: column; gap: 16px;
   }
   .sidebar h2 {
     font-size: 11px; text-transform: uppercase;
-    color: var(--text-muted); margin-bottom: 4px;
+    color: var(--text-muted); margin-bottom: 6px;
   }
   .btn {
     display: block; width: 100%; padding: 6px 10px;
     background: var(--input-bg); color: var(--text);
     border: 1px solid var(--border); border-radius: 5px;
     font-size: 12px; cursor: pointer; text-align: left;
+    margin-bottom: 4px;
   }
   .btn:hover { border-color: var(--accent); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .workspace { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-
-  .tabs {
-    display: flex; border-bottom: 1px solid var(--border);
-    background: var(--surface);
-  }
-  .tab {
-    padding: 8px 16px; font-size: 13px;
-    color: var(--text-muted); cursor: pointer;
-    background: none; border: none;
-    border-bottom: 2px solid transparent;
-  }
-  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
-
-  .panel { flex: 1; padding: 16px; overflow-y: auto; display: none; }
-  .panel.active { display: block; }
-
-  .terminal-pane {
-    height: 45%; min-height: 280px;
-    border-top: 1px solid var(--border);
+  .terminal {
+    flex: 1;
     background: #0f0f0f;
+    min-width: 0;
   }
-  .terminal-pane iframe {
+  .terminal iframe {
     width: 100%; height: 100%; border: 0; display: block;
   }
+
   .placeholder {
-    color: var(--text-muted); font-size: 13px; line-height: 1.6;
+    color: var(--text-muted); font-size: 12px; line-height: 1.6;
+  }
+  .master-group { margin-bottom: 8px; }
+  .master-group > .head {
+    font-size: 12px; font-weight: 600; margin-bottom: 2px;
+  }
+  .master-group ul {
+    list-style: none; padding-left: 8px; font-size: 12px;
+    color: var(--text-muted);
   }
 </style>
 </head>
@@ -93,6 +89,7 @@
 <header class="header">
   <div class="logo">P</div>
   <h1>photo-ai-lisp</h1>
+  <span class="hint">curl /api/inject?text=... で外部からコマンド送信</span>
 </header>
 
 <div class="main">
@@ -100,22 +97,7 @@
   <aside class="sidebar">
     <div>
       <h2>工種マスタ</h2>
-      <div id="masterList" class="placeholder">(未読込)</div>
-    </div>
-    <div>
-      <h2>Agent</h2>
-      <button class="btn" disabled>Claude</button>
-      <button class="btn" disabled>Gemini</button>
-    </div>
-    <div>
-      <h2>写真フォルダ</h2>
-      <input type="text" class="btn" id="folderPath" placeholder="パスを入力">
-    </div>
-    <div>
-      <h2>実行</h2>
-      <button class="btn primary" disabled>Analyze</button>
-      <button class="btn" disabled>Export PDF</button>
-      <button class="btn" disabled>Export Excel</button>
+      <div id="masterList" class="placeholder">(読込中)</div>
     </div>
     <div>
       <h2>プリセット</h2>
@@ -123,66 +105,27 @@
     </div>
   </aside>
 
-  <section class="workspace">
-
-    <div class="upper" style="flex:1; display:flex; flex-direction:column; min-height:0;">
-      <nav class="tabs">
-        <button class="tab active" data-panel="guide">ガイド</button>
-        <button class="tab" data-panel="master">マスタツリー</button>
-        <button class="tab" data-panel="result">リザルト</button>
-        <button class="tab" data-panel="review">問診票</button>
-      </nav>
-      <div class="panel active" id="guide">
-        <p class="placeholder">
-          1. エージェントを起動<br>
-          2. 工種を選ぶ<br>
-          3. 写真フォルダを指定<br>
-          4. Analyze を実行
-        </p>
-      </div>
-      <div class="panel" id="master"><p class="placeholder">マスタツリー（未実装）</p></div>
-      <div class="panel" id="result">
-        <p class="placeholder" id="resultEmpty">プリセットを実行すると結果がここに出ます。</p>
-        <pre id="resultOutput" style="display:none; background:#0f0f0f; padding:12px; border-radius:6px; color:#8c8; font-size:12px; white-space:pre-wrap; max-height:100%; overflow:auto;"></pre>
-      </div>
-      <div class="panel" id="review"><p class="placeholder">問診票（未実装）</p></div>
-    </div>
-
-    <div class="terminal-pane">
-      <iframe id="terminal" src="about:blank"></iframe>
-    </div>
-
+  <section class="terminal">
+    <iframe id="terminal" src="about:blank"></iframe>
   </section>
 
 </div>
 
 <script>
-  // Tab switching
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      tab.classList.add('active');
-      document.getElementById(tab.dataset.panel).classList.add('active');
-    });
-  });
-
-  // Terminal iframe — ghostty-web URL injected by Lisp server
+  // Terminal iframe — ghostty-web URL (or built-in /shell) injected by Lisp server.
   const ghosttyUrl = document.documentElement.dataset.ghosttyUrl;
   if (ghosttyUrl) {
     document.getElementById('terminal').src = ghosttyUrl;
   }
 
-  // Preset buttons — populates sidebar from /api/presets. Click injects
-  // the command line into the live terminal iframe via postMessage.
+  // Preset buttons: click sends argv joined + CR into the terminal iframe.
   function injectIntoTerminal(line) {
     const iframe = document.getElementById('terminal');
     if (!iframe || !iframe.contentWindow) return;
     iframe.contentWindow.postMessage({ type: 'inject', data: line }, '*');
   }
   function runPreset(name, argv) {
-    const line = (argv || []).join(' ') + '\r';
-    injectIntoTerminal(line);
+    injectIntoTerminal((argv || []).join(' ') + '\r');
   }
   (function loadPresets() {
     const target = document.getElementById('presetList');
@@ -208,7 +151,7 @@
       .catch(err => { target.textContent = '(読込失敗: ' + err.message + ')'; });
   })();
 
-  // Master CSV loader — populates left sidebar from /api/masters.
+  // Master CSV display.
   (function loadMasters() {
     const target = document.getElementById('masterList');
     if (!target) return;
@@ -222,29 +165,25 @@
         target.classList.remove('placeholder');
         target.innerHTML = '';
         files.forEach(f => {
-          const wrap = document.createElement('div');
-          const head = document.createElement('div');
-          head.textContent = f.file;
-          head.style.fontWeight = '600';
-          head.style.marginBottom = '4px';
-          wrap.appendChild(head);
+          const g = document.createElement('div');
+          g.className = 'master-group';
+          const h = document.createElement('div');
+          h.className = 'head';
+          h.textContent = f.file;
+          g.appendChild(h);
           const ul = document.createElement('ul');
-          ul.style.listStyle = 'none';
-          ul.style.paddingLeft = '8px';
-          ul.style.fontSize = '12px';
           (f.rows || []).forEach(r => {
             const li = document.createElement('li');
-            li.textContent = ' \u251C ' + (r.label_ja || r.id);
-            li.title = r.id + (r.aliases && r.aliases.length ? ' [' + r.aliases.join(', ') + ']' : '');
+            li.textContent = '├ ' + (r.label_ja || r.id);
+            li.title = r.id + (r.aliases && r.aliases.length
+              ? ' [' + r.aliases.join(', ') + ']' : '');
             ul.appendChild(li);
           });
-          wrap.appendChild(ul);
-          target.appendChild(wrap);
+          g.appendChild(ul);
+          target.appendChild(g);
         });
       })
-      .catch(err => {
-        target.textContent = '(読込失敗: ' + err.message + ')';
-      });
+      .catch(err => { target.textContent = '(読込失敗: ' + err.message + ')'; });
   })();
 </script>
 
