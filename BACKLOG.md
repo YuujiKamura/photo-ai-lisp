@@ -648,15 +648,20 @@ of scope.
 
 Pre-condition for starting Tier 3: all of Tier 2 checked.
 
-- [ ] **T3.a** lock the "real task" up front
+- [x] **T3.a** lock the "real task" up front
       Implements: `docs/tier-3/real-task.md` (decision, not menu)
       Deps: T2.g · Branch: `feat/t3a-real-task`
       DoD: file states exactly one task (recommended: photo-import
            pipeline via Lisp hub), lists its inputs, outputs, and the
            daily usage it will replace. No "we will decide later".
+      Done: 2026-04-21 — locked photo-import pipeline via Lisp hub (matches
+            daily CLI use); KEEP threshold = ≥15 INPUTs/week.
       Est: 1h · Agent hint: Main Claude
 
-- [ ] **T3.b** usage-log verb taxonomy frozen
+- [x] **T3.b** usage-log verb taxonomy frozen
+      Done: 2026-04-21 — `docs/tier-3/usage-log-format.md` freezes 6 verbs
+            (INPUT/SHOW/STATE/LIST/BOOT/SHUTDOWN), TSV line format, byte
+            semantics per verb, and KEEP/ARCHIVE counting rules.
       Implements: `docs/tier-3/usage-log-format.md`
       Deps: T2.f · Branch: `feat/t3b-log-format`
       DoD: file defines the closed set of verbs (`INPUT`, `SHOW`,
