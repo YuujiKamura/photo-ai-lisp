@@ -23,12 +23,6 @@
   (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
   (list-presets-handler))
 
-(defun run-preset-handler-wrapper ()
-  (let* ((uri (hunchentoot:request-uri hunchentoot:*request*))
-         (name (subseq uri (length "/api/run/"))))
-    (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
-    (run-preset-handler name)))
-
 (defun case-view-handler-wrapper ()
   (let* ((uri (hunchentoot:request-uri hunchentoot:*request*))
          (id  (subseq uri 7)))
@@ -38,12 +32,9 @@
 (defun start (&key (port 8090))
   (unless *acceptor*
     (setf *acceptor*
-          (make-instance 'hunchentoot:easy-acceptor :port port))
+          (make-instance 'ws-easy-acceptor :port port))
     ;; Prefix dispatcher for /cases/<id>
     (pushnew (hunchentoot:create-prefix-dispatcher "/cases/" 'case-view-handler-wrapper)
-             hunchentoot:*dispatch-table*)
-    ;; Prefix dispatcher for /api/run/<name>
-    (pushnew (hunchentoot:create-prefix-dispatcher "/api/run/" 'run-preset-handler-wrapper)
              hunchentoot:*dispatch-table*)
     (hunchentoot:start *acceptor*))
   *acceptor*)

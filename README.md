@@ -26,7 +26,7 @@ Windows コマンドプロンプトからは `scripts\demo.cmd`。
 - 右上タブ：ガイド / マスタツリー / リザルト / 問診票
 - 右下：ghostty-web を iframe で埋め込むペイン
 
-プリセットボタンをクリックすると `/api/run/:name` が走り、結果が「リザルト」タブに出る。
+プリセットボタンをクリックすると、argv を joins space + CR した文字列が下のターミナル iframe に `postMessage` で注入され、そのまま実行される（サーバ側サブプロセスは起動せず、見えているシェルで動く）。
 
 ## エンドポイント
 
@@ -34,8 +34,8 @@ Windows コマンドプロンプトからは `scripts\demo.cmd`。
 |---|---|
 | `GET /` | メイン UI |
 | `GET /api/masters` | `masters/*.csv` を JSON で返す |
-| `GET /api/presets` | 登録済みプリセット一覧 |
-| `GET /api/run/:name` | プリセット実行（stdout と exit_code を JSON で返す） |
+| `GET /api/presets` | 登録済みプリセット一覧（UI が起動時に読む） |
+| `GET /shell` | 内蔵ターミナル（xterm.js + /ws/shell） |
 | `GET /cases` | ケース一覧（JSON） |
 | `GET /cases/:id` | ケース詳細（HTML） |
 
@@ -44,11 +44,10 @@ Windows コマンドプロンプトからは `scripts\demo.cmd`。
 `src/presets.lisp` の `defpreset` で登録。
 
 ```lisp
-(defpreset "hello"
-  "cmd.exe" "/c" "echo hello from photo-ai-lisp")
+(defpreset "hello" "echo" "hello" "from" "photo-ai-lisp")
 ```
 
-REPL に走らせれば即反映（サーバ再起動不要）。`rm` `del` `format` `shutdown` `drop` を含む argv は登録時に拒否される。
+argv は「そのままターミナルに打つ安全なコマンド」の想定。REPL 再評価で即反映（サーバ再起動不要）。
 
 ## ディレクトリ
 

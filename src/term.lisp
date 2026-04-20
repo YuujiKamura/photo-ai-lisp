@@ -150,6 +150,15 @@
     term.onData(function(data) {
       if (ws.readyState === WebSocket.OPEN) ws.send(data);
     });
+
+    // Accept postMessage from the parent window (the main UI) to inject
+    // text into the shell. Expected shape: {type:'inject', data:'...'}.
+    window.addEventListener('message', function(ev) {
+      var msg = ev.data;
+      if (!msg || msg.type !== 'inject' || typeof msg.data !== 'string') return;
+      if (ws.readyState !== WebSocket.OPEN) return;
+      ws.send(msg.data);
+    });
   </script>
 </body>
 </html>")

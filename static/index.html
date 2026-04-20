@@ -173,30 +173,16 @@
     document.getElementById('terminal').src = ghosttyUrl;
   }
 
-  // Preset buttons — populates sidebar from /api/presets; click → /api/run/:name → result panel.
-  function activateResultTab() {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    document.querySelector('.tab[data-panel="result"]').classList.add('active');
-    document.getElementById('result').classList.add('active');
+  // Preset buttons — populates sidebar from /api/presets. Click injects
+  // the command line into the live terminal iframe via postMessage.
+  function injectIntoTerminal(line) {
+    const iframe = document.getElementById('terminal');
+    if (!iframe || !iframe.contentWindow) return;
+    iframe.contentWindow.postMessage({ type: 'inject', data: line }, '*');
   }
-  function runPreset(name) {
-    const empty = document.getElementById('resultEmpty');
-    const out   = document.getElementById('resultOutput');
-    activateResultTab();
-    empty.style.display = 'none';
-    out.style.display   = 'block';
-    out.textContent = '$ ' + name + ' ...\n';
-    fetch('/api/run/' + encodeURIComponent(name))
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) { out.textContent = 'ERROR: ' + d.error; return; }
-        out.textContent =
-          '$ ' + (d.argv || []).join(' ') + '\n' +
-          (d.stdout || '') +
-          '\n[exit ' + d.exit_code + ']';
-      })
-      .catch(e => { out.textContent = 'FETCH ERROR: ' + e.message; });
+  function runPreset(name, argv) {
+    const line = (argv || []).join(' ') + '\r';
+    injectIntoTerminal(line);
   }
   (function loadPresets() {
     const target = document.getElementById('presetList');
@@ -215,7 +201,7 @@
           b.className = 'btn';
           b.textContent = p.name;
           b.title = (p.argv || []).join(' ');
-          b.addEventListener('click', () => runPreset(p.name));
+          b.addEventListener('click', () => runPreset(p.name, p.argv));
           target.appendChild(b);
         });
       })

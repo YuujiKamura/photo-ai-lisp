@@ -1,22 +1,28 @@
 (in-package #:photo-ai-lisp)
 
-;;; Preset registry — the allowlist that the UI can invoke.
+;;; Preset registry — the allowlist the UI injects into the live terminal.
 ;;;
-;;; Every button in the browser that fires a subprocess must go through
-;;; a named preset defined here. Unknown names are refused by run-preset.
-;;; This is the 'rule layer' for side-effect containment.
+;;; Each preset is a named list of argv tokens. The UI joins them with
+;;; spaces + CR and postMessages the result into the /shell iframe, where
+;;; xterm.js forwards it over /ws/shell into the already-running shell
+;;; (cmd.exe on Windows, bash on Unix). No server-side subprocess spawn
+;;; happens here — the injected text runs inside the shell the user is
+;;; already looking at.
+;;;
+;;; Contract with the front end:
+;;;   preset argv must be a safe command line as typed in the target
+;;;   shell. No shell metacharacters beyond what you would type
+;;;   intentionally. CR is appended client-side to trigger execution.
 ;;;
 ;;; DSL: (defpreset <name> "arg0" "arg1" ...) registers one entry.
-;;; No free-form shell interpolation — args pass to uiop:launch-program
-;;; as a list, so no shell metacharacter expansion happens.
 
 (defvar *presets* (make-hash-table :test 'equal)
   "Name (string) → list of argv strings. Populated by DEFPRESET.")
 
 (defmacro defpreset (name &rest argv)
   "Register a preset under NAME (keyword or string) with ARGV as the
-   command to run. Stored at macroexpansion-free call time so REPL
-   redefinition just overwrites the entry."
+   argv tokens to inject into the terminal. REPL re-evaluation just
+   overwrites the existing entry."
   `(setf (gethash ,(string-downcase (string name)) *presets*)
          (list ,@argv)))
 
@@ -31,66 +37,32 @@
     (maphash (lambda (k _v) (declare (ignore _v)) (push k names)) *presets*)
     (sort names #'string<)))
 
-(defun %destructive-token-p (token)
-  "Reject tokens that look destructive at registration time. This is a
-   weak static check, not a sandbox — the real discipline is only
-   registering safe commands in DEFPRESET forms."
-  (let ((down (string-downcase token)))
-    (or (search "rm " down)
-        (search "del " down)
-        (search " format " down)
-        (search "shutdown" down)
-        (search "drop " down))))
-
-(defun run-preset (name)
-  "Execute the preset registered under NAME. Returns a plist:
-     (:name :argv :stdout :exit-code)
-   Signals (error) when NAME is not registered."
-  (let ((argv (find-preset name)))
-    (unless argv
-      (error "unknown preset: ~a" name))
-    (when (some #'%destructive-token-p argv)
-      (error "preset ~a contains a destructive token; refusing" name))
-    (multiple-value-bind (out err code)
-        (uiop:run-program argv
-                          :output :string
-                          :error-output :output
-                          :ignore-error-status t)
-      (declare (ignore err))
-      (list :name name
-            :argv argv
-            :stdout (or out "")
-            :exit-code code))))
-
 ;; ---- bundled presets -----------------------------------------------------
+;;
+;; Each preset is the plain command line a user would type into the
+;; running shell. OS dispatch happens via uiop:os-windows-p at
+;; macroexpansion so REPL redefinition still works.
 
 (defpreset "hello"
-  (if (uiop:os-windows-p) "cmd.exe" "/bin/sh")
-  (if (uiop:os-windows-p) "/c" "-c")
-  "echo hello from photo-ai-lisp")
+  "echo" "hello" "from" "photo-ai-lisp")
 
 (defpreset "skills-list"
-  (if (uiop:os-windows-p) "cmd.exe" "/bin/sh")
-  (if (uiop:os-windows-p) "/c" "-c")
-  "dir /b C:\\Users\\yuuji\\.agents\\skills\\photo-* 2>NUL || ls -1 ~/.agents/skills/photo-* 2>/dev/null || echo (no skills found)")
+  (if (uiop:os-windows-p)
+      "dir"
+      "ls")
+  (if (uiop:os-windows-p)
+      "C:\\Users\\yuuji\\.agents\\skills\\"
+      "~/.agents/skills/"))
+
+(defpreset "date"
+  (if (uiop:os-windows-p)
+      "echo"
+      "date")
+  (if (uiop:os-windows-p)
+      "%DATE%"
+      "+%Y-%m-%dT%H:%M:%S"))
 
 ;; ---- HTTP handler --------------------------------------------------------
-
-(defun %preset-result->json (result)
-  "Convert a run-preset plist into a JSON string."
-  (format nil "{\"name\":\"~a\",\"argv\":[~{\"~a\"~^,~}],\"stdout\":\"~a\",\"exit_code\":~a}"
-          (%json-escape (or (getf result :name) ""))
-          (mapcar #'%json-escape (or (getf result :argv) '()))
-          (%json-escape (or (getf result :stdout) ""))
-          (or (getf result :exit-code) 0)))
-
-(defun run-preset-handler (name)
-  "HTTP handler body for GET /api/run/:name. Returns the JSON-encoded
-   preset execution result, or an error envelope with explain text."
-  (handler-case
-      (%preset-result->json (run-preset name))
-    (error (e)
-      (format nil "{\"error\":\"~a\"}" (%json-escape (princ-to-string e))))))
 
 (defun list-presets-handler ()
   "HTTP handler body for GET /api/presets. Returns a JSON array of

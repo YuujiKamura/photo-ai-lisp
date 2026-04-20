@@ -19,9 +19,11 @@
   "Root directory scanned for cases. Each immediate subdirectory is
    treated as one case. Configurable; tests rebind to a temp dir.")
 
-(defvar *ghostty-web-url* (or (uiop:getenv "GHOSTTY_WEB_URL") "http://localhost:3000")
-  "The base URL of the ghostty-web (Node.js) or Deckpilot daemon.
-   The terminal iframe in the case view will point directly here.")
+(defvar *ghostty-web-url* (or (uiop:getenv "GHOSTTY_WEB_URL") "/shell")
+  "URL for the terminal iframe. Defaults to '/shell' — the built-in
+   xterm.js page backed by /ws/shell on this server — so the package
+   is self-contained. Set GHOSTTY_WEB_URL to point at an external
+   ghostty-web daemon (e.g. http://localhost:3000) instead.")
 
 ;; ---- case scan + id ------------------------------------------------------
 
