@@ -19,3 +19,8 @@ Thumbs.db
 # Local logs
 logs/
 .gstack/
+
+# Puppeteer E2E scratch pads and their npm deps
+demo/node_modules/
+demo/_*.mjs
+demo.log
