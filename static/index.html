@@ -138,7 +138,7 @@
   // connected /ws/shell sessions, including the iframe below. This is the
   // same path external curl callers use — proven via inject-e2e test.
   function runPreset(name, argv) {
-    const text = (argv || []).join(' ') + '\r\n';
+    const text = (argv || []).join(' ') + '\n';
     fetch('/api/inject?text=' + encodeURIComponent(text))
       .catch(err => console.error('inject failed', err));
   }
