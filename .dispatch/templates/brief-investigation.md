@@ -1,30 +1,28 @@
-# [HUB-DISPATCH] {{TITLE}} (調査・Bisect)
+﻿# [HUB-DISPATCH] Investigation: {{ISSUE_NAME}}
 
-## プロジェクト
-{{REPO_PATH}}
-ブランチ: {{BRANCH_POLICY}}
+## 郢晏干ﾎ溽ｹｧｸ郢ｧｧ郢ｧｯ郢昴{{REPO_PATH}}
+Investigation only. Revert/Fix prohibited unless explicit.
 
-## 参照
-{{RELEVANT_ISSUES_FILES_BRIEFS}}
+## 陷ｿ繧峨
+- Symptom: {{SYMPTOM_DESCRIPTION}}
+- Last known green: {{LAST_KNOWN_GREEN}}
+- Suspected area: {{SUSPECTED_CODE_OR_COMMIT}}
 
-## ゴール
-{{GOAL_ONE_PARAGRAPH}}
+## 郢ｧｴ郢晢ｽｼ郢晢ｽｫ
+{{GOAL_OF_INVESTIGATION}} (e.g., find root cause, reproduce, bisect)
 
-## やること
-1. **再現手順の確立**: {{STEP_1_REPRODUCTION}}
-2. **調査・探索**: {{STEP_2_INVESTIGATION}}
-3. **原因特定と修正方針の提示**: {{STEP_3_ROOT_CAUSE}}
-4. **調査レポート作成**: {{STEP_4_REPORTING}}
+## 郢ｧ繝ｻ狗ｸｺ阮吮
+1. {{STEP_1}}
+2. {{STEP_2}}
+...
 
-## 成果物
-- {{REPORTS_FILES_DOCS}}
+## 隰悟譽｡霑夲ｽｩ
+- [ ] Report: `docs/{{REPORT_FILENAME}}`
+- [ ] Issue creation/comment: {{GITHUB_ISSUE_LINK}}
 
-## 制約 (破るな)
-- `git push` 禁止
-- プロダクトコードの不用意な修正禁止 (調査・レポート優先)
-- commit は調査レポート作成のみに留める
-- 承認レベル: 2 (Session-wide)
-- 完了時 `DISPATCH-DONE` を出力して停止
+## 陋ｻｶ驍上(驕撰ｽｴ郢ｧ荵昶)
+- revert/fix 驕問扱ｭ｢
+- git push 驕問扱ｭ｢
+- DISPATCH-DONE 邵ｺｧ陋帶㊧ｭ｢
 
-## 期待所要時間
-{{MIN_TIME}}〜{{MAX_TIME}} 分/時間
+## 隴帶ｺｷｾ繝ｻ蝨帝囎竏ｵ蜃ｾ鬮｢繝ｻ{{ESTIMATED_HOURS}}

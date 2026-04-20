@@ -1,30 +1,27 @@
-# [ROLE-HANDOVER] {{MANAGER_SESS}} → {{TARGET_SESS}} 管理役
+﻿# [HUB-DISPATCH] Hub Manager: {{TARGET_SESSION}}
 
-## 前提
-- {{MANAGER_SESS}} は自身のメインタスクを完了または完了直前。
-- 監視対象: `{{TARGET_SESS}}` (別エージェント)。{{TARGET_TASK_DESCRIPTION}}。
+## 郢晏干ﾎ溽ｹｧｸ郢ｧｧ郢ｧｯ郢昴{{REPO_PATH}}
+Babysitting/Unblocking role.
 
-## 新しい役割
-君は `{{TARGET_SESS}}` を監視・Babysit する Hub 管理役に転じる。
-Claude メイン人格は高次判断に専念する。
+## 陷ｿ繧峨
+- Target Brief: {{TARGET_BRIEF_FILE}}
+- Monitoring: `deckpilot show {{TARGET_SESSION}}`
 
-## やること
-1. **定期観測**: `deckpilot show {{TARGET_SESS}} --tail 40` を {{POLLING_INTERVAL}} 秒ごとに実行。
-2. **承認・入力介入**:
-   - `Allow execution of ...?` → `deckpilot send {{TARGET_SESS}} "2"` (安全な場合のみ)。
-   - 不審なコマンド (`rm -rf`, `git push`) は `3` で拒絶。
-3. **Stall 判定と復旧**:
-   - Thinking が {{STALL_LIMIT}} 分継続 → `taskkill` または指示送り。
-4. **完了判定**: `DISPATCH-DONE` 出力または成果物の commit。
-5. **最終レポート**: メインタスクのレポートに追記。
+## 郢ｧｴ郢晢ｽｼ郢晢ｽｫ
+{{MANAGEMENT_GOAL}} (e.g., ensure completion of integration, unblock prompts)
 
-## 成果物
-- {{MAIN_REPORT}} への追記
+## 郢ｧ繝ｻ狗ｸｺ阮吮
+1. {{STEP_1}}
+2. {{STEP_2}}
+...
 
-## 制約 (破るな)
-- `git push` 禁止
-- 監視対象の worktree を直接編集しない
-- 完了時 `MANAGER-ROLE-DONE` を出力して停止
+## 隰悟譽｡霑夲ｽｩ
+- [ ] Follow-up report: `docs/{{REPORT_FILENAME}}`
+- [ ] MANAGER-ROLE-DONE confirm
 
-## 期待所要時間
-{{MIN_TIME}}〜{{MAX_TIME}} 分/時間
+## 陋ｻｶ驍上(驕撰ｽｴ郢ｧ荵昶)
+- direct implementation 驕問扱ｭ｢
+- git push 驕問扱ｭ｢
+- DISPATCH-DONE verify
+
+## 隴帶ｺｷｾ繝ｻ蝨帝囎竏ｵ蜃ｾ鬮｢繝ｻ{{ESTIMATED_HOURS}}

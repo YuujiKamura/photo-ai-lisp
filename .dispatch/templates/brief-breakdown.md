@@ -1,31 +1,28 @@
-# [HUB-DISPATCH] {{TITLE}} (タスク分解)
+﻿# [HUB-DISPATCH] Breakdown: {{ISSUE_OR_ROADMAP}}
 
-## プロジェクト
-{{REPO_PATH}}
+## 郢晏干ﾎ溽ｹｧｸ郢ｧｧ郢ｧｯ郢昴{{REPO_PATH}}
+Documentation/Backlog update only.
 
-## 参照
-{{RELEVANT_ISSUES_ROADMAPS}}
+## 陷ｿ繧峨
+- Issue/Roadmap: {{SOURCE_URL}}
+- Status: STATUS.md, BACKLOG.md
 
-## ゴール
-{{GOAL_ONE_PARAGRAPH}}
+## 郢ｧｴ郢晢ｽｼ郢晢ｽｫ
+{{BREAKDOWN_GOAL}} (e.g., Tier 1/2/3 atomic tasks with stable IDs)
 
-## やること
-1. **既存状況の把握**: {{STEP_1_UNDERSTAND}}
-2. **タスク分解と ID 付与**: {{STEP_2_BREAKDOWN}}
-3. **バックログと設計メモの更新**: {{STEP_3_UPDATE_BACKLOG}}
-4. **Acceleration Tactics の検討**: {{STEP_4_ACCELERATION}}
+## 郢ｧ繝ｻ狗ｸｺ阮吮
+1. {{STEP_1}}
+2. {{STEP_2}}
+...
 
-## 成果物
-- `BACKLOG.md` の更新
-- `docs/{{TIER_BREAKDOWN_DOC}}.md`
-- (任意) gh issue 起票 ({{GH_ISSUE_LIMIT}})
+## 隰悟譽｡霑夲ｽｩ
+- [ ] BACKLOG.md update (atomic tasks added)
+- [ ] Breakdown doc: `docs/{{BREAKDOWN_FILENAME}}`
 
-## 制約 (破るな)
-- プロダクトコードの編集禁止
-- `git push` 禁止
-- commit OK (ドキュメントのみ)
-- 承認レベル: 2 (Session-wide)
-- 完了時 `DISPATCH-DONE` を出力して停止
+## 陋ｻｶ驍上(驕撰ｽｴ郢ｧ荵昶)
+- product code 髫暦ｽｦ郢ｧ荵昶
+- git push 驕問扱ｭ｢
+- scope creep 驕問扱ｭ｢
+- DISPATCH-DONE 邵ｺｧ陋帶㊧ｭ｢
 
-## 期待所要時間
-{{MIN_TIME}}〜{{MAX_TIME}} 分/時間
+## 隴帶ｺｷｾ繝ｻ蝨帝囎竏ｵ蜃ｾ鬮｢繝ｻ{{ESTIMATED_HOURS}}

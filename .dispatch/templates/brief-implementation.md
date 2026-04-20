@@ -1,31 +1,30 @@
-# [HUB-DISPATCH] {{TITLE}}
+﻿# [HUB-DISPATCH] Implementation: {{FEATURE_NAME}}
 
-## プロジェクト
-{{REPO_PATH}}
-ブランチ: {{BRANCH_POLICY}}
+## 郢晏干ﾎ溽ｹｧｸ郢ｧｧ郢ｧｯ郢昴{{REPO_PATH}}
+{{BRANCH_POLICY}} (e.g., commit only, push prohibited)
 
-## 参照
-{{RELEVANT_ISSUES_FILES_BRIEFS}}
+## 陷ｿ繧峨
+- Issue: {{ISSUE_URL}}
+- Status: STATUS.md, BACKLOG.md
+- Context: {{CONTEXT_FILES_OR_BRIEFS}}
 
-## ゴール
-{{GOAL_ONE_PARAGRAPH}}
+## 郢ｧｴ郢晢ｽｼ郢晢ｽｫ
+{{ONE_PARAGRAPH_GOAL}}
 
-## やること
-1. **分析と調査**: {{STEP_1_ANALYSIS}}
-2. **実装/修正**: {{STEP_2_IMPLEMENTATION}}
-3. **検証**: {{STEP_3_VERIFICATION}}
-4. **成果物作成**: {{STEP_4_REPORTING}}
+## 郢ｧ繝ｻ狗ｸｺ阮吮
+1. {{STEP_1}}
+2. {{STEP_2}}
+...
 
-## 成果物
-- {{FILES_COMMITS_ISSUES}}
+## 隰悟譽｡霑夲ｽｩ
+- [ ] Commit: `{{COMMIT_MESSAGE_PATTERN}}`
+- [ ] Files: {{EXPECTED_FILES}}
+- [ ] Verification: {{TEST_COMMAND_OR_LINT}}
 
-## 制約 (破るな)
-- `git push` 禁止
-- main 直 commit 禁止 ({{BRANCH_NAME}} ブランチを使用)
-- 承認レベル: 2 (Session-wide)
-- scope creep 禁止 (関連外の修正を混ぜない)
-- 完了時 `DISPATCH-DONE` を出力して停止
-- {{ADDITIONAL_CONSTRAINTS}}
+## 陋ｻｶ驍上(驕撰ｽｴ郢ｧ荵昶)
+- git push / force-push 驕問扱ｭ｢
+- main 騾ｶｴ commit 驕問扱ｭ｢
+- scope creep 驕問扱ｭ｢
+- DISPATCH-DONE 邵ｺｧ陋帶㊧ｭ｢
 
-## 期待所要時間
-{{MIN_TIME}}〜{{MAX_TIME}} 分/時間
+## 隴帶ｺｷｾ繝ｻ蝨帝囎竏ｵ蜃ｾ鬮｢繝ｻ{{ESTIMATED_HOURS}}
