@@ -117,6 +117,10 @@
       <button class="btn" disabled>Export PDF</button>
       <button class="btn" disabled>Export Excel</button>
     </div>
+    <div>
+      <h2>プリセット</h2>
+      <div id="presetList" class="placeholder">(読込中)</div>
+    </div>
   </aside>
 
   <section class="workspace">
@@ -137,7 +141,10 @@
         </p>
       </div>
       <div class="panel" id="master"><p class="placeholder">マスタツリー（未実装）</p></div>
-      <div class="panel" id="result"><p class="placeholder">リザルト（未実装）</p></div>
+      <div class="panel" id="result">
+        <p class="placeholder" id="resultEmpty">プリセットを実行すると結果がここに出ます。</p>
+        <pre id="resultOutput" style="display:none; background:#0f0f0f; padding:12px; border-radius:6px; color:#8c8; font-size:12px; white-space:pre-wrap; max-height:100%; overflow:auto;"></pre>
+      </div>
       <div class="panel" id="review"><p class="placeholder">問診票（未実装）</p></div>
     </div>
 
@@ -165,6 +172,55 @@
   if (ghosttyUrl) {
     document.getElementById('terminal').src = ghosttyUrl;
   }
+
+  // Preset buttons — populates sidebar from /api/presets; click → /api/run/:name → result panel.
+  function activateResultTab() {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelector('.tab[data-panel="result"]').classList.add('active');
+    document.getElementById('result').classList.add('active');
+  }
+  function runPreset(name) {
+    const empty = document.getElementById('resultEmpty');
+    const out   = document.getElementById('resultOutput');
+    activateResultTab();
+    empty.style.display = 'none';
+    out.style.display   = 'block';
+    out.textContent = '$ ' + name + ' ...\n';
+    fetch('/api/run/' + encodeURIComponent(name))
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { out.textContent = 'ERROR: ' + d.error; return; }
+        out.textContent =
+          '$ ' + (d.argv || []).join(' ') + '\n' +
+          (d.stdout || '') +
+          '\n[exit ' + d.exit_code + ']';
+      })
+      .catch(e => { out.textContent = 'FETCH ERROR: ' + e.message; });
+  }
+  (function loadPresets() {
+    const target = document.getElementById('presetList');
+    if (!target) return;
+    fetch('/api/presets')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+      .then(presets => {
+        if (!Array.isArray(presets) || presets.length === 0) {
+          target.textContent = '(無し)';
+          return;
+        }
+        target.classList.remove('placeholder');
+        target.innerHTML = '';
+        presets.forEach(p => {
+          const b = document.createElement('button');
+          b.className = 'btn';
+          b.textContent = p.name;
+          b.title = (p.argv || []).join(' ');
+          b.addEventListener('click', () => runPreset(p.name));
+          target.appendChild(b);
+        });
+      })
+      .catch(err => { target.textContent = '(読込失敗: ' + err.message + ')'; });
+  })();
 
   // Master CSV loader — populates left sidebar from /api/masters.
   (function loadMasters() {

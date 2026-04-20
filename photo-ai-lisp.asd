@@ -12,6 +12,7 @@
                              (:file "pipeline")
                              (:file "pipeline-cp")
                              (:file "business-ui")
+                             (:file "presets")
                              (:file "cp-protocol")
                              (:file "cp-client")
                              (:file "term")
