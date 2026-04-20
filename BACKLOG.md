@@ -548,11 +548,14 @@ data-flow diagrams, and the Tier-3 candidate-task decision.
 
 ### Tier 1 — Wire up (Atom 17.x ∪ deckpilot #27)
 
-- [ ] **T1.a** verify deckpilot `/ws` endpoint reachable from Lisp side
+- [x] **T1.a** verify deckpilot `/ws` endpoint reachable from Lisp side
       Implements: `docs/tier-1/ws-handshake.log`
-      Deps: deckpilot #27 (external) · Branch: `docs/issue-19-breakdown` or `feat/t1a-ws-smoke`
+      Deps: deckpilot #27 (external, closed 2026-04-20) · Branch: `feat/t1a-ws-smoke`
       DoD: committed log file showing successful WS handshake against
            `ws://127.0.0.1:8080/ws` from `cp-client`, with request/response bytes.
+      Done: 2026-04-21 — LIST returned OK=T with 29 sessions; STATE returned
+            expected "session not found" error; `tier-1-smoke.lisp` in-package
+            bug also fixed (was at COMMON-LISP-USER).
       Est: 1h · Agent hint: Claude Sonnet | Codex
 
 - [ ] **T1.b** CP round-trip smoke: INPUT / SHOW / STATE / LIST

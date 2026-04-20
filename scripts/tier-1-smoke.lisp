@@ -1,11 +1,11 @@
 (load "~/quicklisp/setup.lisp")
 (push (uiop:getcwd) asdf:*central-registry*)
+(ql:quickload :photo-ai-lisp :silent t)
+
+(in-package #:photo-ai-lisp)
 
 (handler-case
     (progn
-      (ql:quickload :photo-ai-lisp :silent t)
-      (in-package #:photo-ai-lisp)
-
       (format t "--- TIER 1 SMOKE START ---~%")
       (let ((client (connect-cp :port 8080)))
         (format t "CONNECT OK: ~A~%" (if client "YES" "NO"))
