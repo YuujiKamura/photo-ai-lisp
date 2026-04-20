@@ -529,3 +529,176 @@ Track A Phase 3 implementation is gated on `3r.*` research:
   separate PRs, not bundled.
 - Sequential within Phase 5 handlers: `5c` must land before the
   parallel fan-out of `5e.*`.
+
+---
+
+## Track T — Tier Fast Path (issue #19)
+
+Purpose: compress the path from "CP wires up" to the **dogfood verdict**
+(`docs/tier-3-verdict.md` = KEEP | ARCHIVE). Everything in Track T is
+subordinate to Issue #19's acceleration tactics.
+
+Freezes in effect while Track T is open:
+- Phase 5 (screen buffer), Phase 6f (broadcast), Phase 7 (tool intercept)
+  are **frozen**. Do not add atoms there.
+- No new backlog atoms may be opened outside Track T until T2 demo exists.
+
+Design memo: see `docs/tier-breakdown.md` for per-tier rationale,
+data-flow diagrams, and the Tier-3 candidate-task decision.
+
+### Tier 1 — Wire up (Atom 17.x ∪ deckpilot #27)
+
+- [ ] **T1.a** verify deckpilot `/ws` endpoint reachable from Lisp side
+      Implements: `docs/tier-1/ws-handshake.log`
+      Deps: deckpilot #27 (external) · Branch: `docs/issue-19-breakdown` or `feat/t1a-ws-smoke`
+      DoD: committed log file showing successful WS handshake against
+           `ws://127.0.0.1:8080/ws` from `cp-client`, with request/response bytes.
+      Est: 1h · Agent hint: Claude Sonnet | Codex
+
+- [ ] **T1.b** CP round-trip smoke: INPUT / SHOW / STATE / LIST
+      Implements: `scripts/cp-smoke.lisp`, `docs/tier-1/cp-roundtrip.log`
+      Deps: T1.a · Branch: `feat/t1b-cp-smoke`
+      DoD: one script that sends each of the 4 verbs and prints JSON
+           replies; committed log shows all 4 receive non-error responses.
+      Est: 2h · Agent hint: Claude Sonnet
+
+- [ ] **T1.c** `scripts/boot-hub.lisp` exits 0 with green log
+      Implements: `scripts/boot-hub.lisp` (review/harden existing), `docs/tier-1/boot-hub.log`
+      Deps: T1.b · Branch: `feat/t1c-boot-hub`
+      DoD: `sbcl --script scripts/boot-hub.lisp` exits 0, stdout captured
+           to `docs/tier-1/boot-hub.log`, no unhandled conditions.
+      Est: 1-2h · Agent hint: Claude Sonnet
+
+- [ ] **T1.d** Tier-1 completion evidence commit
+      Implements: `docs/tier-1/README.md` (index of logs) + all T1.* logs
+      Deps: T1.a, T1.b, T1.c · Branch: `feat/t1d-tier1-evidence`
+      DoD: `docs/tier-1/` contains handshake + roundtrip + boot logs and
+           a one-paragraph README pointing to each.
+      Est: 0.5h · Agent hint: Claude Sonnet | Gemini
+
+### Tier 2 — Minimal vertical slice
+
+Scope lock: one browser page, one iframe, one button, one fixed agent.
+Anything that does not shorten the path to the T2.h screenshot is out
+of scope.
+
+- [ ] **T2.a** iframe wiring to ghostty-web in business-ui case view
+      Implements: `src/business-ui.lisp` (case-view-handler HTML emit)
+      Deps: T1.c · Branch: `feat/t2a-iframe-wire`
+      DoD: loading `/cases/:id` renders a live ghostty-web terminal in
+           an iframe; raw ghostty-web URL taken from a `*ghostty-web-url*`
+           parameter (no hardcoded port).
+      Est: 1-2h · Agent hint: Claude Sonnet
+
+- [ ] **T2.b** CP INPUT trigger button on case view
+      Implements: `src/business-ui.lisp`, `src/cp-ui-bridge.lisp` (new)
+      Deps: T2.a, T1.b · Branch: `feat/t2b-input-button`
+      DoD: a `<form method=post>` button on `/cases/:id` sends a
+           fixed command (e.g. `echo hello from hub`) to the fixed agent
+           via `pipeline-cp:send-input`; server returns 200.
+      Est: 2h · Agent hint: Claude Sonnet | Codex
+
+- [ ] **T2.c** fixed single-agent session selection
+      Implements: `scripts/boot-hub.lisp` (spawn one claude session via
+                  deckpilot on boot, store id in `*demo-session-id*`),
+                  `docs/tier-2/agent-choice.md`
+      Deps: T2.b · Branch: `feat/t2c-fixed-agent`
+      DoD: boot script creates exactly one agent session on startup;
+           `*demo-session-id*` resolvable from Lisp REPL; rationale for
+           picking `claude -p` (vs gemini / codex) documented.
+      Est: 1-2h · Agent hint: Main Claude
+
+- [ ] **T2.d** end-to-end round-trip reflected in iframe
+      Implements: manual test script `scripts/t2-e2e.lisp` (+ log)
+      Deps: T2.a, T2.b, T2.c · Branch: `feat/t2d-e2e`
+      DoD: pressing the T2.b button causes the iframe's terminal pane
+           to visibly display the agent's output within 5s; captured log
+           `docs/tier-2/e2e.log` shows WS frames for INPUT→broadcast.
+      Est: 2h · Agent hint: Claude Sonnet
+
+- [ ] **T2.e** one-command boot (`make demo` or `sbcl --script scripts/demo.lisp`)
+      Implements: `Makefile` (or `scripts/demo.lisp`), `docs/tier-2/boot.md`
+      Deps: T2.c · Branch: `feat/t2e-make-demo`
+      DoD: a single command from repo root starts ghostty-web + deckpilot
+           + hub, opens a browser to `/cases/:id`, and exits cleanly on
+           Ctrl-C; documented in `docs/tier-2/boot.md`.
+      Est: 2-3h · Agent hint: Claude Sonnet | Codex
+
+- [ ] **T2.f** usage-log instrumentation stub
+      Implements: `src/cp-ui-bridge.lisp` — every CP `INPUT` emitted
+                  from the UI appends a line to `~/.photo-ai-lisp/usage.log`.
+      Deps: T2.b · Branch: `feat/t2f-usage-log`
+      DoD: clicking the T2.b button adds a line shaped
+           `<iso-ts>\t<verb>\t<session>\t<bytes>` to the log; test asserts
+           one click → one line.
+      Est: 1h · Agent hint: Gemini | Codex
+
+- [ ] **T2.g** Tier-2 demo screenshot + committed log
+      Implements: `docs/tier-2/demo.png`, `docs/tier-2/demo.log`,
+                  `docs/tier-2/README.md`
+      Deps: T2.d, T2.e · Branch: `feat/t2g-evidence`
+      DoD: PNG shows business-ui page with iframe populated by agent
+           output; log is the matching `docs/tier-2/e2e.log` from T2.d.
+      Est: 0.5h · Agent hint: Main Claude
+
+### Tier 3 — Dogfood week
+
+Pre-condition for starting Tier 3: all of Tier 2 checked.
+
+- [ ] **T3.a** lock the "real task" up front
+      Implements: `docs/tier-3/real-task.md` (decision, not menu)
+      Deps: T2.g · Branch: `feat/t3a-real-task`
+      DoD: file states exactly one task (recommended: photo-import
+           pipeline via Lisp hub), lists its inputs, outputs, and the
+           daily usage it will replace. No "we will decide later".
+      Est: 1h · Agent hint: Main Claude
+
+- [ ] **T3.b** usage-log verb taxonomy frozen
+      Implements: `docs/tier-3/usage-log-format.md`
+      Deps: T2.f · Branch: `feat/t3b-log-format`
+      DoD: file defines the closed set of verbs (`INPUT`, `SHOW`,
+           `STATE`, `LIST`, `BOOT`, `SHUTDOWN`) and byte-count semantics
+           so later counting is unambiguous.
+      Est: 0.5h · Agent hint: Gemini
+
+- [ ] **T3.c** daily checkpoint template
+      Implements: `docs/tier-3/checkpoints/TEMPLATE.md`
+      Deps: T3.a, T3.b · Branch: `feat/t3c-checkpoint-template`
+      DoD: template captures per-day: hub-driven command count vs
+           terminal-driven, blockers, UX frustrations, time-to-task.
+      Est: 0.5h · Agent hint: Gemini
+
+- [ ] **T3.d** KEEP/ARCHIVE quantitative criteria
+      Implements: `docs/tier-3/verdict-criteria.md`
+      Deps: T3.c · Branch: `feat/t3d-criteria`
+      DoD: criteria are numeric and pre-registered — e.g. KEEP iff
+           `hub_commands / (hub_commands + cli_commands) ≥ 0.4`
+           **AND** `frustration_count ≤ 5/day average` across the week.
+           ARCHIVE otherwise. No vibe-based judgment.
+      Est: 1h · Agent hint: Main Claude
+
+- [ ] **T3.e** dogfood week execution log (one atom per weekday)
+      Implements: `docs/tier-3/checkpoints/{mon,tue,wed,thu,fri}.md`
+                  (five files from the T3.c template)
+      Deps: T3.c, T3.d · Branch: `feat/t3e-dogfood-log`
+      DoD: five checkpoint files exist, each filled from the template
+           using that day's actual `usage.log` counts.
+      Est: 5 × 0.5h over the week · Agent hint: Main Claude
+
+- [ ] **T3.f** `docs/tier-3-verdict.md` — KEEP | ARCHIVE
+      Implements: `docs/tier-3-verdict.md`
+      Deps: T3.e · Branch: `feat/t3f-verdict`
+      DoD: top line is literally `KEEP` or `ARCHIVE`; below it,
+           computed ratio + frustration count vs T3.d criteria + link
+           to each T3.e checkpoint. Closes Issue #19.
+      Est: 1h · Agent hint: Main Claude
+
+### Post-verdict
+
+- [ ] **T.KEEP.next** if KEEP: unfreeze Phase 5 / Phase 7 and re-queue
+      Implements: re-open Phase 5 / Phase 7 atoms in this file
+      Deps: T3.f = KEEP
+- [ ] **T.ARCHIVE.next** if ARCHIVE: freeze Lisp hub, retain deckpilot
+      `/ws` as public API, annotate this backlog with archival note
+      Implements: `docs/archive-note.md`
+      Deps: T3.f = ARCHIVE
