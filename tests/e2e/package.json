@@ -1,0 +1,15 @@
+{
+  "name": "photo-ai-lisp-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Puppeteer harness for /shell picker -> Claude REPL E2E regression (Team E).",
+  "scripts": {
+    "test":         "node picker-to-claude.mjs",
+    "test:verbose": "node picker-to-claude.mjs --verbose",
+    "install:puppeteer": "npm install puppeteer-core@24"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}

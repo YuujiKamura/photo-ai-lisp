@@ -24,3 +24,8 @@ logs/
 demo/node_modules/
 demo/_*.mjs
 demo.log
+
+# tests/e2e/ puppeteer harness — local npm install + lockfiles are
+# per-machine. The .mjs source and package.json ARE tracked.
+tests/e2e/node_modules/
+tests/e2e/package-lock.json
