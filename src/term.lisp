@@ -267,26 +267,39 @@
     term.open(document.getElementById('terminal'));
     term.write('\\x1b[33m[connecting to shell subprocess...]\\x1b[0m\\r\\n');
 
-    const ws = new WebSocket('ws://' + location.host + '/ws/shell');
-    ws.binaryType = 'arraybuffer';
-
-    ws.onopen  = function() { term.write('\\x1b[32m[connected]\\x1b[0m\\r\\n'); };
-    ws.onclose = function() { term.write('\\r\\n\\x1b[31m[disconnected]\\x1b[0m\\r\\n'); };
-    ws.onerror = function() { term.write('\\r\\n\\x1b[31m[ws error]\\x1b[0m\\r\\n'); };
-    ws.onmessage = function(e) {
-      term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data));
-    };
+    var ws = null;
+    var reconnectDelay = 500;
+    function connect() {
+      ws = new WebSocket('ws://' + location.host + '/ws/shell');
+      ws.binaryType = 'arraybuffer';
+      ws.onopen = function() {
+        reconnectDelay = 500;
+        term.write('\\x1b[32m[connected]\\x1b[0m\\r\\n');
+      };
+      ws.onclose = function() {
+        term.write('\\r\\n\\x1b[31m[disconnected — retrying]\\x1b[0m\\r\\n');
+        setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 5000);
+      };
+      ws.onerror = function() {
+        term.write('\\r\\n\\x1b[31m[ws error]\\x1b[0m\\r\\n');
+      };
+      ws.onmessage = function(e) {
+        term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data));
+      };
+    }
+    connect();
 
     term.onData(function(data) {
-      if (ws.readyState === WebSocket.OPEN) ws.send(data);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(data);
     });
 
-    // Accept postMessage from the parent window (the main UI) to inject
-    // text into the shell. Expected shape: {type:'inject', data:'...'}.
+    // Kept as a fallback: accept postMessage from parent to inject text.
+    // The main UI now uses /api/inject, so this is only for legacy callers.
     window.addEventListener('message', function(ev) {
       var msg = ev.data;
       if (!msg || msg.type !== 'inject' || typeof msg.data !== 'string') return;
-      if (ws.readyState !== WebSocket.OPEN) return;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
       ws.send(msg.data);
     });
   </script>

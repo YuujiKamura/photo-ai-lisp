@@ -118,15 +118,13 @@
     document.getElementById('terminal').src = ghosttyUrl;
   }
 
-  // Preset buttons: click sends argv joined + CR into the terminal iframe.
-  function injectIntoTerminal(line) {
-    const iframe = document.getElementById('terminal');
-    if (!iframe || !iframe.contentWindow) return;
-    iframe.contentWindow.postMessage({ type: 'inject', data: line }, '*');
-  }
+  // Preset buttons: click posts to /api/inject. Server broadcasts to all
+  // connected /ws/shell sessions, including the iframe below. This is the
+  // same path external curl callers use — proven via inject-e2e test.
   function runPreset(name, argv) {
-    // cmd.exe needs CRLF, bash accepts either; send both for safety.
-    injectIntoTerminal((argv || []).join(' ') + '\r\n');
+    const text = (argv || []).join(' ') + '\r\n';
+    fetch('/api/inject?text=' + encodeURIComponent(text))
+      .catch(err => console.error('inject failed', err));
   }
   (function loadPresets() {
     const target = document.getElementById('presetList');
