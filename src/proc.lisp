@@ -35,8 +35,7 @@ the child (e.g. cmd.exe) emits code-page-specific bytes."
                                    :input           :stream
                                    :output          :stream
                                    :error-output    :output
-                                   :element-type    'character
-                                   :external-format :latin-1)))
+                                   :element-type    '(unsigned-byte 8))))
     (make-child-process
      :process proc
      :stdin   (uiop:process-info-input  proc)

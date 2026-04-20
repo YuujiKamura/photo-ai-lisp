@@ -144,44 +144,43 @@
 ;;; before writing into the child, or cmd.exe buffers lines forever.
 
 (test normalize-child-input-plain-ascii-passthrough
-  (is (string= "hello"
+  (is (equalp #(104 101 108 108 111)
                (photo-ai-lisp::%normalize-child-input "hello"))
       "pure ASCII should survive untouched"))
 
 (test normalize-child-input-empty-string
-  (is (string= "" (photo-ai-lisp::%normalize-child-input ""))
+  (is (equalp #() (photo-ai-lisp::%normalize-child-input ""))
       "empty string should stay empty"))
 
 (test normalize-child-input-lf-becomes-cr
-  (is (string= (string #\Return)
+  (is (equalp #(13)
                (photo-ai-lisp::%normalize-child-input (string #\Newline)))
       "a bare LF must be rewritten as CR so ConPTY treats it as Enter"))
 
 (test normalize-child-input-lf-inside-line
-  (is (string= (format nil "echo hi~C" #\Return)
+  (is (equalp #(101 99 104 111 32 104 105 13)
                (photo-ai-lisp::%normalize-child-input
                 (format nil "echo hi~C" #\Newline)))
       "LF terminating a command should be flipped to CR"))
 
 (test normalize-child-input-cr-left-alone
-  (is (string= (string #\Return)
+  (is (equalp #(13)
                (photo-ai-lisp::%normalize-child-input (string #\Return)))
       "an already-CR byte must pass through without duplication"))
 
 (test normalize-child-input-multi-lf-all-flipped
-  (is (string= (format nil "a~Cb~Cc" #\Return #\Return)
+  (is (equalp #(97 13 98 13 99)
                (photo-ai-lisp::%normalize-child-input
                 (format nil "a~Cb~Cc" #\Newline #\Newline)))
       "every LF in the input should be flipped to CR"))
 
 (test normalize-child-input-drops-out-of-latin1
-  ;; The child stream is :latin-1; anything above #xFF cannot round-
-  ;; trip and would otherwise raise on write. CL doesn't support
-  ;; \xNN string escapes, so build the expected string via code-char.
+  ;; The child stream is binary; anything above #xFF cannot be
+  ;; represented as (unsigned-byte 8) and must be dropped.
   (let* ((in  (format nil "ok~C~Cend" (code-char #x00A9) (code-char #x2603)))
-         (exp (format nil "ok~Cend" (code-char #x00A9)))
+         (exp #(111 107 169 101 110 100))
          (out (photo-ai-lisp::%normalize-child-input in)))
-    (is (string= exp out)
+    (is (equalp exp out)
         "keeps <=0xFF chars and drops anything past latin-1 range")))
 
 (test normalize-child-input-drops-surrogate-like-code
@@ -189,6 +188,6 @@
   ;; but hunchensocket's decoder occasionally synthesizes them from
   ;; bad UTF-8; they're >0xFF so must be dropped.
   (let ((in (format nil "x~Cy" (code-char #xD800))))
-    (is (string= "xy"
+    (is (equalp #(120 121)
                  (photo-ai-lisp::%normalize-child-input in))
         "lone surrogates must be dropped")))

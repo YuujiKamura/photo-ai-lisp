@@ -59,8 +59,8 @@
   "Normalize S for writing to the child's stdin. Two transforms:
 
     - Drop any char whose code does not fit latin-1 (>#xFF). The
-      child stream is opened :external-format :latin-1 so anything
-      outside that range would raise on write.
+      child stream is opened :element-type '(unsigned-byte 8) so
+      everything outside that range must be filtered.
 
     - Translate LF (code 10) to CR (code 13). When the child is
       running under our ConPTY bridge, cmd.exe only treats CR as
@@ -68,11 +68,12 @@
       never executes. Callers on the WebSocket side send LF because
       hunchensocket crashes 1011 on a bare-CR text frame (see the
       term.onData replace in /shell), so we flip it back here."
-  (with-output-to-string (o)
+  (let ((buf (make-array (length s) :element-type '(unsigned-byte 8) :fill-pointer 0)))
     (loop for c across s
-          for code = (and c (char-code c))
-          when (and code (<= code #xFF))
-            do (write-char (if (= code 10) #\Return c) o))))
+          for code = (char-code c)
+          when (<= code #xFF)
+            do (vector-push-extend (if (= code 10) 13 code) buf))
+    buf))
 
 (defun shell-broadcast-input (text)
   "Write TEXT to the child stdin of every connected shell client.
@@ -88,7 +89,7 @@
             when child
               count (handler-case
                         (progn
-                          (write-string safe (child-process-stdin child))
+                          (write-sequence safe (child-process-stdin child))
                           (finish-output (child-process-stdin child))
                           t)
                       (error () nil))))))
@@ -204,11 +205,11 @@
           (cond
             ((listen out)
              (handler-case
-                 (let ((c (read-char out nil :eof)))
+                 (let ((b (read-byte out nil :eof)))
                    (cond
-                     ((eq c :eof) (return))
-                     ((null c) nil)   ; defensive: some streams return NIL
-                     (t (vector-push-extend c buf))))
+                     ((eq b :eof) (return))
+                     ((null b) nil)   ; defensive: some streams return NIL
+                     (t (vector-push-extend (code-char b) buf))))
                (error () nil)))
             ((plusp (length buf))
              (let ((chunk (%scrub-for-utf8 (copy-seq buf))))
@@ -263,7 +264,7 @@
                      (line  (format nil "~a~c~c"
                                     (%agent-picker-command)
                                     #\Return #\Newline)))
-                 (write-string line stdin)
+                 (write-sequence (%normalize-child-input line) stdin)
                  (finish-output stdin))))
            :name "agent-picker-inject")))
     (error (e)
@@ -299,7 +300,7 @@
         (let ((child (shell-client-child client)))
           (when child
             (let ((safe (%normalize-child-input message)))
-              (write-string safe (child-process-stdin child))
+              (write-sequence safe (child-process-stdin child))
               (finish-output (child-process-stdin child))))))
     (error (e)
       (format *error-output* "WS-IN-ERR type=~a msg=~a~%" (type-of e) e)
