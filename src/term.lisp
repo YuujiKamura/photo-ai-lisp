@@ -41,6 +41,65 @@
 
 (defvar *shell-resource* (make-instance 'shell-resource))
 
+;;; Observability: trace bytes flowing through /ws/shell.
+;;; Entries are plists: (:ts <iso-string> :dir :in|:out :bytes N :preview "...")
+;;; :in  = browser -> /ws/shell -> child stdin
+;;; :out = child stdout -> /ws/shell -> browser
+;;; Ring buffer, oldest entries dropped. Exposed via /api/shell-trace so a
+;;; test or a human can curl to verify that a preset click actually reached
+;;; the child process, without parsing server logs.
+(defvar *shell-trace-max* 100)
+(defvar *shell-trace* '())
+(defvar *shell-trace-lock* (bordeaux-threads:make-lock "shell-trace"))
+
+(defun %iso-now ()
+  (multiple-value-bind (s m h d mo y) (decode-universal-time (get-universal-time) 0)
+    (format nil "~4,'0d-~2,'0d-~2,'0dT~2,'0d:~2,'0d:~2,'0dZ" y mo d h m s)))
+
+(defun %preview (s)
+  (let* ((s (or s ""))
+         (n (min 80 (length s))))
+    (map 'string (lambda (c)
+                   (cond ((char= c #\Return) #\space)
+                         ((char= c #\Newline) #\space)
+                         ((< (char-code c) 32) #\.)
+                         (t c)))
+         (subseq s 0 n))))
+
+(defun shell-trace-record (dir message)
+  "Append one trace entry. DIR is :in or :out. MESSAGE is the string."
+  (bordeaux-threads:with-lock-held (*shell-trace-lock*)
+    (push (list :ts (%iso-now)
+                :dir dir
+                :bytes (length message)
+                :preview (%preview message))
+          *shell-trace*)
+    (when (> (length *shell-trace*) *shell-trace-max*)
+      (setf *shell-trace* (subseq *shell-trace* 0 *shell-trace-max*)))))
+
+(defun shell-trace-snapshot ()
+  "Return a copy of the trace (newest first). Thread-safe."
+  (bordeaux-threads:with-lock-held (*shell-trace-lock*)
+    (copy-list *shell-trace*)))
+
+(defun shell-trace-clear ()
+  "Reset the trace. Useful in tests."
+  (bordeaux-threads:with-lock-held (*shell-trace-lock*)
+    (setf *shell-trace* '())))
+
+(defun shell-trace-handler ()
+  "HTTP handler body for GET /api/shell-trace. Returns a JSON array
+   of trace entries, newest first."
+  (let ((entries (shell-trace-snapshot)))
+    (format nil "[~{~a~^,~}]"
+            (loop for e in entries
+                  collect (format nil
+                                  "{\"ts\":\"~a\",\"dir\":\"~a\",\"bytes\":~a,\"preview\":\"~a\"}"
+                                  (getf e :ts)
+                                  (string-downcase (symbol-name (getf e :dir)))
+                                  (getf e :bytes)
+                                  (%json-escape (getf e :preview)))))))
+
 (defun %shell-argv ()
   (if (uiop:os-windows-p)
       '("cmd.exe")
@@ -60,8 +119,10 @@
                    (return)
                    (vector-push-extend c buf))))
             ((plusp (length buf))
-             (ignore-errors
-               (hunchensocket:send-text-message client (copy-seq buf)))
+             (let ((chunk (copy-seq buf)))
+               (shell-trace-record :out chunk)
+               (ignore-errors
+                 (hunchensocket:send-text-message client chunk)))
              (setf (fill-pointer buf) 0))
             ((not (child-alive-p child))
              (return))
@@ -95,6 +156,7 @@
 (defmethod hunchensocket:text-message-received ((resource shell-resource)
                                                   (client   shell-client)
                                                   message)
+  (shell-trace-record :in message)
   (let ((child (shell-client-child client)))
     (when child
       (ignore-errors

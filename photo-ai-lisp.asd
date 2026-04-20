@@ -33,6 +33,7 @@
                              (:file "cp-client-tests")
                              (:file "pipeline-cp-tests")
                              (:file "presets-tests")
-                             (:file "business-ui-tests"))))
+                             (:file "business-ui-tests")
+                             (:file "shell-trace-tests"))))
   :perform (test-op (o c)
              (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))

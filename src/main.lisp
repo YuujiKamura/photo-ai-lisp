@@ -23,6 +23,10 @@
   (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
   (list-presets-handler))
 
+(hunchentoot:define-easy-handler (shell-trace-page :uri "/api/shell-trace") ()
+  (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
+  (shell-trace-handler))
+
 (defun case-view-handler-wrapper ()
   (let* ((uri (hunchentoot:request-uri hunchentoot:*request*))
          (id  (subseq uri 7)))
