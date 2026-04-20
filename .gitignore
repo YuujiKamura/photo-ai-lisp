@@ -7,3 +7,15 @@ Thumbs.db
 .idea/
 
 .omc/
+
+# Dispatch brief workspace (ephemeral per-task briefs)
+.dispatch/*.md
+.dispatch/*.log
+!.dispatch/templates/
+!.dispatch/templates/*.md
+
+# Claude Code local state
+.claude/
+
+# Local logs
+logs/
