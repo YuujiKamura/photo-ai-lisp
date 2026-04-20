@@ -125,7 +125,8 @@
     iframe.contentWindow.postMessage({ type: 'inject', data: line }, '*');
   }
   function runPreset(name, argv) {
-    injectIntoTerminal((argv || []).join(' ') + '\r');
+    // cmd.exe needs CRLF, bash accepts either; send both for safety.
+    injectIntoTerminal((argv || []).join(' ') + '\r\n');
   }
   (function loadPresets() {
     const target = document.getElementById('presetList');
