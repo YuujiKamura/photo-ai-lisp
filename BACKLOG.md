@@ -585,12 +585,16 @@ Scope lock: one browser page, one iframe, one button, one fixed agent.
 Anything that does not shorten the path to the T2.h screenshot is out
 of scope.
 
-- [ ] **T2.a** iframe wiring to ghostty-web in business-ui case view
+- [x] **T2.a** iframe wiring to ghostty-web in business-ui case view
       Implements: `src/business-ui.lisp` (case-view-handler HTML emit)
       Deps: T1.c · Branch: `feat/t2a-iframe-wire`
       DoD: loading `/cases/:id` renders a live ghostty-web terminal in
            an iframe; raw ghostty-web URL taken from a `*ghostty-web-url*`
            parameter (no hardcoded port).
+      Done: 2026-04-21 — already in `src/business-ui.lisp` (line 22 defines
+            `*ghostty-web-url*` defaulting to env `GHOSTTY_WEB_URL` or
+            `/shell`; line 136 renders `<iframe src="~a/shell?case=~a">`
+            interpolating that parameter). De-facto complete before Track T.
       Est: 1-2h · Agent hint: Claude Sonnet
 
 - [ ] **T2.b** CP INPUT trigger button on case view
