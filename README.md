@@ -65,6 +65,10 @@ argv は「そのままターミナルに打つ安全なコマンド」の想定
    Emacs から `M-x slime-connect localhost 4005` で接続してそのまま式評価が可能。
    `NO_SWANK=1` で無効化。
 
+## アーキテクチャ
+
+- [docs/shell-architecture.md](docs/shell-architecture.md) — `/ws/shell` → conpty-bridge → cmd.exe → agent REPL の 5 レイヤ構造と picker 自動投入の仕組み
+
 ## ディレクトリ
 
 ```
