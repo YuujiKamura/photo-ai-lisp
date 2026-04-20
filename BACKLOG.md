@@ -568,11 +568,14 @@ data-flow diagrams, and the Tier-3 candidate-task decision.
             to the expected `echo t1b-ping` round-trip in cmd.exe.
       Est: 2h · Agent hint: Claude Sonnet
 
-- [ ] **T1.c** `scripts/boot-hub.lisp` exits 0 with green log
-      Implements: `scripts/boot-hub.lisp` (review/harden existing), `docs/tier-1/boot-hub.log`
-      Deps: T1.b · Branch: `feat/t1c-boot-hub`
+- [x] **T1.c** `scripts/boot-hub.lisp` exits 0 with green log
+      Implements: `scripts/boot-hub.lisp` (new), `docs/tier-1/boot-hub.log`
+      Deps: T1.b · Branch: `feat/tier-1-finish`
       DoD: `sbcl --script scripts/boot-hub.lisp` exits 0, stdout captured
            to `docs/tier-1/boot-hub.log`, no unhandled conditions.
+      Done: 2026-04-21 — sbcl --script exited 0; stderr empty; stdout
+            printed `[BOOT] ok` after a successful LIST round-trip
+            (session-count=33).
       Est: 1-2h · Agent hint: Claude Sonnet
 
 - [ ] **T1.d** Tier-1 completion evidence commit

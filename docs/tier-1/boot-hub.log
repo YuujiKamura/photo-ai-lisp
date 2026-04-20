@@ -1,0 +1,33 @@
+=== T1.c boot-hub smoke verification ===
+Date: 2026-04-21
+Target: ws://127.0.0.1:8080/ws (deckpilot daemon)
+Runner: scripts/boot-hub.lisp
+SBCL: /c/Users/yuuji/SBCLLocal/PFiles/Steel Bank Common Lisp/sbcl.exe
+Invocation: sbcl --script scripts/boot-hub.lisp
+Exit code: 0 (stderr empty, no unhandled condition)
+
+Verdict: **PASS** — boot script loads the ASDF system, connects to the
+deckpilot CP endpoint, issues one LIST round-trip, disconnects cleanly,
+and exits 0.
+
+---
+
+[BOOT] photo-ai-lisp hub smoke start
+[BOOT] connect ws://127.0.0.1:8080/ws -> OK
+[BOOT] LIST ok=T session-count=33
+[BOOT] ok
+
+---
+
+--- notes ---
+* session-count=33 matches the live `deckpilot list` count at test time
+  (T1.a recorded 29, T1.b recorded 31; the drift is just how many live
+  ghostty sessions happened to be registered when each atom ran).
+* The disconnect step is wrapped in `ignore-errors` to swallow the benign
+  wsd "Cannot destroy thread" cleanup noise noted in T1.a and T1.b; that
+  is why stderr is empty rather than containing the usual trailing warning.
+* `in-package #:photo-ai-lisp` is placed at toplevel (line 13) — NOT
+  inside the `handler-case` / `progn` — so the `connect-cp` and
+  `make-cp-list-tabs` symbol resolution hits the package export,
+  avoiding the T1.a in-package bug (script silently stayed in
+  COMMON-LISP-USER).
