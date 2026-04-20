@@ -41,6 +41,45 @@
 
 (defvar *shell-resource* (make-instance 'shell-resource))
 
+;;; Registry of currently connected /ws/shell clients so /api/inject can
+;;; broadcast text to every attached session's child stdin. This is the
+;;; minimal equivalent of the Rust-version CP protocol's session fan-out.
+(defvar *shell-clients* '())
+(defvar *shell-clients-lock* (bordeaux-threads:make-lock "shell-clients"))
+
+(defun %register-shell-client (client)
+  (bordeaux-threads:with-lock-held (*shell-clients-lock*)
+    (pushnew client *shell-clients*)))
+
+(defun %unregister-shell-client (client)
+  (bordeaux-threads:with-lock-held (*shell-clients-lock*)
+    (setf *shell-clients* (remove client *shell-clients*))))
+
+(defun shell-broadcast-input (text)
+  "Write TEXT to the child stdin of every connected shell client.
+   Returns the number of clients reached. TEXT is recorded in the
+   trace ring as :in (dir) for observability."
+  (let ((recipients (bordeaux-threads:with-lock-held (*shell-clients-lock*)
+                      (copy-list *shell-clients*))))
+    (shell-trace-record :in text)
+    (loop for c in recipients
+          for child = (shell-client-child c)
+          when child
+            count (handler-case
+                      (progn
+                        (write-string text (child-process-stdin child))
+                        (finish-output (child-process-stdin child))
+                        t)
+                    (error () nil)))))
+
+(defun inject-handler (text)
+  "HTTP handler body for GET /api/inject?text=... Returns
+     {\"ok\":true,\"recipients\":N,\"bytes\":M}
+   N = number of /ws/shell sessions that received the text."
+  (let* ((t0 (or text ""))
+         (n (shell-broadcast-input t0)))
+    (format nil "{\"ok\":true,\"recipients\":~a,\"bytes\":~a}" n (length t0))))
+
 ;;; Observability: trace bytes flowing through /ws/shell.
 ;;; Entries are plists: (:ts <iso-string> :dir :in|:out :bytes N :preview "...")
 ;;; :in  = browser -> /ws/shell -> child stdin
@@ -105,6 +144,25 @@
       '("cmd.exe")
       (list "/bin/bash" "--norc" "--noprofile")))
 
+(defun %scrub-for-utf8 (s)
+  "Replace lone UTF-16 surrogates (#xD800–#xDFFF) and NIL/undefined
+   chars with U+FFFD. cmd.exe on Windows can emit bytes that decode
+   to surrogates under the default flexi-streams/hunchentoot setup,
+   which then blow up hunchensocket's UTF-8 text-frame encoder with
+   'NIL is not of type (MOD 1114112)'."
+  (let ((out (make-array (length s) :element-type 'character
+                                    :adjustable t :fill-pointer 0)))
+    (loop for c across s
+          for code = (and c (char-code c))
+          do (vector-push-extend
+              (cond
+                ((null code) #\?)
+                ((<= #xD800 code #xDFFF) #\?)
+                ((> code #x10FFFF) #\?)
+                (t c))
+              out))
+    (coerce out 'simple-string)))
+
 ;;; 2c — stdout pump: read chunks from child stdout, push to websocket.
 (defun %stdout-pump (client child)
   (let ((out (child-process-stdout child))
@@ -114,15 +172,23 @@
         (loop
           (cond
             ((listen out)
-             (let ((c (read-char out nil :eof)))
-               (if (eq c :eof)
-                   (return)
-                   (vector-push-extend c buf))))
+             (handler-case
+                 (let ((c (read-char out nil :eof)))
+                   (cond
+                     ((eq c :eof) (return))
+                     ((null c) nil)   ; defensive: some streams return NIL
+                     (t (vector-push-extend c buf))))
+               (error () nil)))
             ((plusp (length buf))
-             (let ((chunk (copy-seq buf)))
+             (let ((chunk (%scrub-for-utf8 (copy-seq buf))))
                (shell-trace-record :out chunk)
-               (ignore-errors
-                 (hunchensocket:send-text-message client chunk)))
+               (handler-case
+                   (hunchensocket:send-text-message client chunk)
+                 (error (e)
+                   (format *error-output* "PUMP-SEND-ERR type=~a msg=~a chars=~a~%"
+                           (type-of e) e
+                           (map 'list #'char-code (subseq chunk 0 (min 20 (length chunk)))))
+                   (finish-output *error-output*))))
              (setf (fill-pointer buf) 0))
             ((not (child-alive-p child))
              (return))
@@ -138,7 +204,8 @@
         (setf (shell-client-reader-thread client)
               (bordeaux-threads:make-thread
                (lambda () (%stdout-pump client child))
-               :name "shell-stdout-pump")))
+               :name "shell-stdout-pump"))
+        (%register-shell-client client))
     (error (e)
       (ignore-errors
         (hunchensocket:send-text-message
@@ -147,6 +214,7 @@
 ;;; 2d — graceful shutdown: close stdin, wait up to 2s, then terminate.
 (defmethod hunchensocket:client-disconnected ((resource shell-resource)
                                                (client   shell-client))
+  (%unregister-shell-client client)
   (let ((child (shell-client-child client)))
     (when child
       (kill-child child)

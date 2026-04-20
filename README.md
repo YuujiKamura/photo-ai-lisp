@@ -36,6 +36,7 @@ Windows コマンドプロンプトからは `scripts\demo.cmd`。
 | `GET /api/masters` | `masters/*.csv` を JSON で返す |
 | `GET /api/presets` | 登録済みプリセット一覧（UI が起動時に読む） |
 | `GET /api/shell-trace` | /ws/shell を流れた直近 100 フレームの ring buffer |
+| `GET /api/inject?text=...` | 接続中の全 /ws/shell セッションに文字列をブロードキャスト |
 | `GET /api/reload?module=<key>` | サーバ無停止で `src/<key>.lisp` 再読込 |
 | `GET /shell` | 内蔵ターミナル（xterm.js + /ws/shell） |
 | `GET /cases` | ケース一覧（JSON） |

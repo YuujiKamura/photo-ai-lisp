@@ -32,6 +32,11 @@
   (let ((module (hunchentoot:get-parameter "module")))
     (reload-handler module)))
 
+(hunchentoot:define-easy-handler (inject-page :uri "/api/inject") ()
+  (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
+  (let ((text (hunchentoot:get-parameter "text")))
+    (inject-handler text)))
+
 (defun case-view-handler-wrapper ()
   (let* ((uri (hunchentoot:request-uri hunchentoot:*request*))
          (id  (subseq uri 7)))

@@ -12,11 +12,16 @@
 
 (defun spawn-child (&optional (argv (%default-argv)))
   "Launch ARGV as a subprocess with piped stdio.
-Returns a CHILD-PROCESS; stderr is merged into stdout."
+Returns a CHILD-PROCESS; stderr is merged into stdout.
+External format is forced to :latin-1 so every byte maps to exactly one
+character. This avoids UTF-8 decode failures in the stdout pump when
+the child (e.g. cmd.exe) emits code-page-specific bytes."
   (let ((proc (uiop:launch-program argv
-                                   :input        :stream
-                                   :output       :stream
-                                   :error-output :output)))
+                                   :input           :stream
+                                   :output          :stream
+                                   :error-output    :output
+                                   :element-type    'character
+                                   :external-format :latin-1)))
     (make-child-process
      :process proc
      :stdin   (uiop:process-info-input  proc)

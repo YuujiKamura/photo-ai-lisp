@@ -35,6 +35,7 @@
                              (:file "presets-tests")
                              (:file "business-ui-tests")
                              (:file "shell-trace-tests")
-                             (:file "reload-tests"))))
+                             (:file "reload-tests")
+                             (:file "inject-tests"))))
   :perform (test-op (o c)
              (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))
