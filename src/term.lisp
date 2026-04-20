@@ -322,8 +322,29 @@
     }
     connect();
 
+    // Local echo. cmd.exe with piped stdin (what the Lisp side gives
+    // us via uiop:launch-program — not ConPTY) does not echo typed
+    // characters, so the user sees nothing until Enter fires a new
+    // prompt. Echo printable + a handful of control chars client-side
+    // so typing feels live. Safe because cmd does not emit hidden
+    // password prompts; switch to a real PTY later to drop this.
+    function localEcho(data) {
+      let out = '';
+      for (let i = 0; i < data.length; i++) {
+        const c = data[i];
+        const code = c.charCodeAt(0);
+        if (c === '\\r')      out += '\\r\\n';       // Enter -> newline
+        else if (c === '\\b' || code === 0x7f) out += '\\b \\b';  // BS/DEL
+        else if (code >= 0x20 && code !== 0x7f) out += c;  // printable
+        // silently drop other control bytes (escape sequences etc.)
+      }
+      if (out) term.write(out);
+    }
     term.onData((data) => {
-      if (ws && ws.readyState === WebSocket.OPEN) ws.send(data);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        localEcho(data);
+        ws.send(data);
+      }
     });
 
     // Legacy: parent pages can still postMessage inject text directly.
