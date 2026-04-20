@@ -9,8 +9,7 @@ Thumbs.db
 .omc/
 
 # Dispatch brief workspace (ephemeral per-task briefs)
-.dispatch/*.md
-.dispatch/*.log
+.dispatch/*
 !.dispatch/templates/
 !.dispatch/templates/*.md
 
