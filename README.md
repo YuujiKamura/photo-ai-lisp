@@ -38,6 +38,7 @@ Windows コマンドプロンプトからは `scripts\demo.cmd`。
 | `GET /api/shell-trace` | /ws/shell を流れた直近 100 フレームの ring buffer |
 | `GET /api/inject?text=...` | 接続中の全 /ws/shell セッションに文字列をブロードキャスト |
 | `GET /api/reload?module=<key>` | サーバ無停止で `src/<key>.lisp` 再読込 |
+| `POST /api/eval` | S 式を body に POST すると走ってるサーバで eval（localhost 限定） |
 | `GET /shell` | 内蔵ターミナル（xterm.js + /ws/shell） |
 | `GET /cases` | ケース一覧（JSON） |
 | `GET /cases/:id` | ケース詳細（HTML） |

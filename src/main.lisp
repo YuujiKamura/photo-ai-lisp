@@ -37,6 +37,10 @@
   (let ((text (hunchentoot:get-parameter "text")))
     (inject-handler text)))
 
+(hunchentoot:define-easy-handler (eval-page :uri "/api/eval") ()
+  (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
+  (live-eval-handler hunchentoot:*request*))
+
 (defun case-view-handler-wrapper ()
   (let* ((uri (hunchentoot:request-uri hunchentoot:*request*))
          (id  (subseq uri 7)))
