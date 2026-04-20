@@ -578,11 +578,14 @@ data-flow diagrams, and the Tier-3 candidate-task decision.
             (session-count=33).
       Est: 1-2h · Agent hint: Claude Sonnet
 
-- [ ] **T1.d** Tier-1 completion evidence commit
+- [x] **T1.d** Tier-1 completion evidence commit
       Implements: `docs/tier-1/README.md` (index of logs) + all T1.* logs
-      Deps: T1.a, T1.b, T1.c · Branch: `feat/t1d-tier1-evidence`
+      Deps: T1.a, T1.b, T1.c · Branch: `feat/tier-1-finish`
       DoD: `docs/tier-1/` contains handshake + roundtrip + boot logs and
            a one-paragraph README pointing to each.
+      Done: 2026-04-21 — docs/tier-1/README.md indexes the three
+            evidence logs with relative links and a post-Atom-17.4
+            framing. Tier 1 closed.
       Est: 0.5h · Agent hint: Claude Sonnet | Gemini
 
 ### Tier 2 — Minimal vertical slice
