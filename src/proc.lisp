@@ -26,16 +26,29 @@
      '("/bin/bash"))))
 
 (defun spawn-child (&optional (argv (%default-argv)))
-  "Launch ARGV as a subprocess with piped stdio.
-Returns a CHILD-PROCESS; stderr is merged into stdout.
-External format is forced to :latin-1 so every byte maps to exactly one
-character. This avoids UTF-8 decode failures in the stdout pump when
-the child (e.g. cmd.exe) emits code-page-specific bytes."
+  "Launch ARGV as a subprocess with piped stdio; stderr merged into stdout.
+Returns a CHILD-PROCESS.
+
+Stream contract (SBCL/Windows, verified):
+  - stream-element-type is CHARACTER. uiop forwards :element-type to
+    sb-ext:run-program but SBCL does not honor it for the :stream case;
+    the internal pipe stream is hardcoded to :element-type :default,
+    which is CHARACTER on SBCL. Declaring '(unsigned-byte 8) here was
+    a no-op and has been removed.
+  - :external-format :latin-1 is the load-bearing setting. Latin-1 is
+    bijective over 0x00-0xFF, so no decode failure can tear the stdout
+    pump when cmd.exe emits CP932/CP437/ISO-8859 bytes. Without this,
+    the implicit :default external format resolves to :utf-8 on modern
+    Windows SBCL and a single non-ASCII byte can crash the reader.
+  - Callers rely on SBCL fd-stream bivalence: read-byte / write-sequence
+    of byte vectors work on these CHARACTER streams even though the
+    declared element-type is CHARACTER. This is an SBCL implementation
+    detail, not an ANSI guarantee."
   (let ((proc (uiop:launch-program argv
                                    :input           :stream
                                    :output          :stream
                                    :error-output    :output
-                                   :element-type    '(unsigned-byte 8))))
+                                   :external-format :latin-1)))
     (make-child-process
      :process proc
      :stdin   (uiop:process-info-input  proc)
