@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<!--
+  Adapted from: photo-ai-rust/web/index.html (3-pane layout skeleton).
+  This is a slim port — original is 75 KB / 1857 lines with full business
+  logic. Here we replicate structure only; behavior is added incrementally.
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>photo-ai-lisp</title>
+<style>
+  :root {
+    --bg: #1a1a1e;
+    --surface: #22222a;
+    --border: #33333a;
+    --text: #e6e6ea;
+    --text-muted: #8a8a94;
+    --accent: #7c6fe0;
+    --input-bg: #15151a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text);
+    height: 100vh; display: flex; flex-direction: column;
+  }
+  .header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px; border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .logo {
+    width: 24px; height: 24px; border-radius: 6px;
+    background: var(--accent); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+  }
+  .header h1 { font-size: 14px; font-weight: 600; }
+
+  .main { flex: 1; display: flex; min-height: 0; }
+
+  .sidebar {
+    width: 260px; padding: 12px;
+    border-right: 1px solid var(--border);
+    overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  .sidebar h2 {
+    font-size: 11px; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 4px;
+  }
+  .btn {
+    display: block; width: 100%; padding: 6px 10px;
+    background: var(--input-bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 5px;
+    font-size: 12px; cursor: pointer; text-align: left;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .workspace { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .tabs {
+    display: flex; border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .tab {
+    padding: 8px 16px; font-size: 13px;
+    color: var(--text-muted); cursor: pointer;
+    background: none; border: none;
+    border-bottom: 2px solid transparent;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  .panel { flex: 1; padding: 16px; overflow-y: auto; display: none; }
+  .panel.active { display: block; }
+
+  .terminal-pane {
+    height: 45%; min-height: 280px;
+    border-top: 1px solid var(--border);
+    background: #0f0f0f;
+  }
+  .terminal-pane iframe {
+    width: 100%; height: 100%; border: 0; display: block;
+  }
+  .placeholder {
+    color: var(--text-muted); font-size: 13px; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">P</div>
+  <h1>photo-ai-lisp</h1>
+</header>
+
+<div class="main">
+
+  <aside class="sidebar">
+    <div>
+      <h2>工種マスタ</h2>
+      <div id="masterList" class="placeholder">(未読込)</div>
+    </div>
+    <div>
+      <h2>Agent</h2>
+      <button class="btn" disabled>Claude</button>
+      <button class="btn" disabled>Gemini</button>
+    </div>
+    <div>
+      <h2>写真フォルダ</h2>
+      <input type="text" class="btn" id="folderPath" placeholder="パスを入力">
+    </div>
+    <div>
+      <h2>実行</h2>
+      <button class="btn primary" disabled>Analyze</button>
+      <button class="btn" disabled>Export PDF</button>
+      <button class="btn" disabled>Export Excel</button>
+    </div>
+  </aside>
+
+  <section class="workspace">
+
+    <div class="upper" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+      <nav class="tabs">
+        <button class="tab active" data-panel="guide">ガイド</button>
+        <button class="tab" data-panel="master">マスタツリー</button>
+        <button class="tab" data-panel="result">リザルト</button>
+        <button class="tab" data-panel="review">問診票</button>
+      </nav>
+      <div class="panel active" id="guide">
+        <p class="placeholder">
+          1. エージェントを起動<br>
+          2. 工種を選ぶ<br>
+          3. 写真フォルダを指定<br>
+          4. Analyze を実行
+        </p>
+      </div>
+      <div class="panel" id="master"><p class="placeholder">マスタツリー（未実装）</p></div>
+      <div class="panel" id="result"><p class="placeholder">リザルト（未実装）</p></div>
+      <div class="panel" id="review"><p class="placeholder">問診票（未実装）</p></div>
+    </div>
+
+    <div class="terminal-pane">
+      <iframe id="terminal" src="about:blank"></iframe>
+    </div>
+
+  </section>
+
+</div>
+
+<script>
+  // Tab switching
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.panel).classList.add('active');
+    });
+  });
+
+  // Terminal iframe — ghostty-web URL injected by Lisp server
+  const ghosttyUrl = document.documentElement.dataset.ghosttyUrl;
+  if (ghosttyUrl) {
+    document.getElementById('terminal').src = ghosttyUrl;
+  }
+
+  // Master CSV loader — populates left sidebar from /api/masters.
+  (function loadMasters() {
+    const target = document.getElementById('masterList');
+    if (!target) return;
+    fetch('/api/masters')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+      .then(files => {
+        if (!Array.isArray(files) || files.length === 0) {
+          target.textContent = '(空)';
+          return;
+        }
+        target.classList.remove('placeholder');
+        target.innerHTML = '';
+        files.forEach(f => {
+          const wrap = document.createElement('div');
+          const head = document.createElement('div');
+          head.textContent = f.file;
+          head.style.fontWeight = '600';
+          head.style.marginBottom = '4px';
+          wrap.appendChild(head);
+          const ul = document.createElement('ul');
+          ul.style.listStyle = 'none';
+          ul.style.paddingLeft = '8px';
+          ul.style.fontSize = '12px';
+          (f.rows || []).forEach(r => {
+            const li = document.createElement('li');
+            li.textContent = ' \u251C ' + (r.label_ja || r.id);
+            li.title = r.id + (r.aliases && r.aliases.length ? ' [' + r.aliases.join(', ') + ']' : '');
+            ul.appendChild(li);
+          });
+          wrap.appendChild(ul);
+          target.appendChild(wrap);
+        });
+      })
+      .catch(err => {
+        target.textContent = '(読込失敗: ' + err.message + ')';
+      });
+  })();
+</script>
+
+</body>
+</html>

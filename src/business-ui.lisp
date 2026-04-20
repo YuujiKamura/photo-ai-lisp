@@ -143,18 +143,148 @@ masters:   ~a</pre>
                   *ghostty-web-url*
                   encoded)))))
 
+(defvar *static-root*
+  (uiop:ensure-directory-pathname
+   (merge-pathnames "static/" (uiop:getcwd)))
+  "Directory containing static HTML/CSS/JS assets.")
+
+(defvar *masters-root*
+  (uiop:ensure-directory-pathname
+   (merge-pathnames "masters/" (uiop:getcwd)))
+  "Directory containing master CSV files bundled with the distribution.")
+
+;; ---- master CSV loader ---------------------------------------------------
+
+(defun %split-csv-line (line)
+  "Split LINE on commas. No quoting support — our master CSVs use plain
+   ASCII delimiters and pipe-separated aliases."
+  (loop with start = 0
+        with len = (length line)
+        for i from 0 to len
+        when (or (= i len) (char= (char line i) #\,))
+          collect (subseq line start i)
+          and do (setf start (1+ i))))
+
+(defun %split-aliases (s)
+  "Split pipe-delimited alias cell into a list of non-empty strings."
+  (when (and s (plusp (length s)))
+    (loop with start = 0
+          with len = (length s)
+          for i from 0 to len
+          when (or (= i len) (char= (char s i) #\|))
+            collect (subseq s start i) into parts
+            and do (setf start (1+ i))
+          finally (return (remove-if (lambda (x) (zerop (length x))) parts)))))
+
+(defun %strip-bom (s)
+  "Strip a leading UTF-8 BOM (#\\Zero-Width-No-Break-Space) if present."
+  (if (and (plusp (length s)) (char= (char s 0) (code-char #xFEFF)))
+      (subseq s 1)
+      s))
+
+(defun %chomp (s)
+  "Trim trailing CR/LF from S."
+  (let ((end (length s)))
+    (loop while (and (plusp end)
+                     (let ((ch (char s (1- end))))
+                       (or (char= ch #\Return) (char= ch #\Newline))))
+          do (decf end))
+    (subseq s 0 end)))
+
+(defun read-master-csv (relpath)
+  "Read a master CSV file under *MASTERS-ROOT* and return a list of
+   plists: ((:id \"...\" :label-ja \"...\" :parent-id \"...\" :aliases (...)) ...).
+   Expects header line `id,label_ja,parent_id,aliases`. Returns NIL if
+   the file does not exist."
+  (let ((path (merge-pathnames relpath *masters-root*)))
+    (when (uiop:file-exists-p path)
+      (with-open-file (in path :direction :input
+                               :external-format :utf-8)
+        (let ((header-line (read-line in nil nil)))
+          (declare (ignore header-line))
+          (loop for raw = (read-line in nil nil)
+                while raw
+                for line = (%chomp (%strip-bom raw))
+                when (plusp (length line))
+                  collect (let ((cols (%split-csv-line line)))
+                            (list :id        (nth 0 cols)
+                                  :label-ja  (nth 1 cols)
+                                  :parent-id (or (nth 2 cols) "")
+                                  :aliases   (%split-aliases (nth 3 cols))))))))))
+
+(defun %master-file-stem (path)
+  "Return the file name without extension for PATH, e.g.
+   work-category.csv -> \"work-category\"."
+  (or (pathname-name path) ""))
+
+(defun %row->json (row)
+  (format nil
+          "{\"id\":\"~a\",\"label_ja\":\"~a\",\"parent_id\":\"~a\",\"aliases\":[~{\"~a\"~^,~}]}"
+          (%json-escape (or (getf row :id) ""))
+          (%json-escape (or (getf row :label-ja) ""))
+          (%json-escape (or (getf row :parent-id) ""))
+          (mapcar #'%json-escape (or (getf row :aliases) '()))))
+
+(defun %master-file->json (path)
+  (let* ((stem (%master-file-stem path))
+         (rel  (concatenate 'string stem ".csv"))
+         (rows (read-master-csv rel))
+         (rows-json (mapcar #'%row->json rows)))
+    (format nil "{\"file\":\"~a\",\"rows\":[~{~a~^,~}]}"
+            (%json-escape stem)
+            rows-json)))
+
+(defun list-masters-handler ()
+  "HTTP handler body for GET /api/masters. Returns a JSON array of
+   {file, rows:[...]} objects, one per CSV file under *MASTERS-ROOT*.
+   Returns an empty array if the directory does not exist."
+  (if (uiop:directory-exists-p *masters-root*)
+      (let* ((files (directory (merge-pathnames "*.csv" *masters-root*)))
+             (sorted (sort (copy-list files) #'string<
+                           :key (lambda (p) (or (pathname-name p) ""))))
+             (objs (mapcar #'%master-file->json sorted)))
+        (format nil "[~{~a~^,~}]" objs))
+      "[]"))
+
+(defun %read-static-file (relpath)
+  "Read RELPATH under *static-root* as a string. NIL if missing."
+  (let ((path (merge-pathnames relpath *static-root*)))
+    (when (uiop:file-exists-p path)
+      (uiop:read-file-string path))))
+
 (defun home-handler ()
-  "HTTP handler body for GET /. Renders the case list page
-   (delegates to LIST-CASES-HANDLER for data, then HTML-wraps it),
-   or emits an HTTP redirect to /cases — implementer's choice."
-  (format nil "<!DOCTYPE html>
-<html>
-<head>
-  <meta charset=\"utf-8\">
-  <title>photo-ai-lisp</title>
-  <meta http-equiv=\"refresh\" content=\"0; url=/cases\">
-</head>
-<body>
-  <p>Redirecting to <a href=\"/cases\">/cases</a>...</p>
-</body>
-</html>"))
+  "HTTP handler body for GET /. Serves static/index.html verbatim,
+   injecting the ghostty-web URL as a data attribute on <html>.
+   Falls back to a redirect stub when static/index.html is missing."
+  (let ((html (%read-static-file "index.html")))
+    (if html
+        ;; Inject ghostty URL so JS can populate the iframe.
+        (let ((injected (format nil "data-ghostty-url=\"~a\""
+                                (%json-escape *ghostty-web-url*))))
+          (cl-ppcre-free-replace html injected))
+        (format nil "<!DOCTYPE html>
+<html><head><meta charset=\"utf-8\"><title>photo-ai-lisp</title>
+<meta http-equiv=\"refresh\" content=\"0; url=/cases\"></head>
+<body><p>static/index.html not found. <a href=\"/cases\">/cases</a></p>
+</body></html>"))))
+
+(defun cl-ppcre-free-replace (html data-attr)
+  "Insert DATA-ATTR into the <html ...> opening tag without depending
+   on cl-ppcre. Case-sensitive literal match on '<html lang=\"ja\">'
+   or plain '<html>'."
+  (let ((lang-tag "<html lang=\"ja\">")
+        (plain    "<html>"))
+    (cond
+      ((search lang-tag html)
+       (let ((pos (search lang-tag html)))
+         (concatenate 'string
+                      (subseq html 0 pos)
+                      (format nil "<html lang=\"ja\" ~a>" data-attr)
+                      (subseq html (+ pos (length lang-tag))))))
+      ((search plain html)
+       (let ((pos (search plain html)))
+         (concatenate 'string
+                      (subseq html 0 pos)
+                      (format nil "<html ~a>" data-attr)
+                      (subseq html (+ pos (length plain))))))
+      (t html))))

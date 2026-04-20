@@ -1,0 +1,9 @@
+id,label_ja,parent_id,aliases
+paving,舗装工事,,アスファルト舗装工事|道路舗装
+asphalt,アスファルト舗装,paving,表層工|As舗装
+subbase,路盤工,paving,下層路盤|上層路盤
+traffic-control,交通誘導,,交通誘導員|ガードマン
+safety-management,安全管理,,安全対策|KY活動
+temperature-management,温度管理,paving,舗設温度|到着温度
+photo-management,写真管理,,工事写真|施工写真
+compaction,締固め,paving,ローラ転圧|初期締固め
