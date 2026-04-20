@@ -107,6 +107,33 @@
   termFrame.addEventListener('load', () => termFrame.contentWindow.focus());
   window.addEventListener('focus', () => termFrame.contentWindow.focus());
 
+  // Live-reload channel. Server pushes 'reload:<module>' after /api/reload.
+  //   term     -> the /shell page changed; re-src the iframe only.
+  //   business-ui / all / static -> sidebar HTML changed; swap in place.
+  // Either path avoids a full page refresh so the PTY (owned by Lisp)
+  // keeps running and only the renderer re-hydrates.
+  function openControlWS() {
+    const cws = new WebSocket('ws://' + location.host + '/ws/control');
+    cws.onmessage = (ev) => {
+      const msg = String(ev.data || '');
+      if (msg.startsWith('reload:')) {
+        const what = msg.slice('reload:'.length);
+        if (what === 'term' || what === 'all') {
+          // Force the iframe to re-fetch /shell. Same-origin, so the WS
+          // to /ws/shell just reconnects and attaches to a fresh PTY.
+          const base = termFrame.src.split('?')[0] || ghosttyUrl || '/shell';
+          termFrame.src = base + '?hr=' + Date.now();
+        }
+        if (what === 'business-ui' || what === 'all' || what === 'static') {
+          // Refresh only the sidebar fragments. Terminal iframe untouched.
+          refreshPresets();
+        }
+      }
+    };
+    cws.onclose = () => setTimeout(openControlWS, 1000);
+  }
+  openControlWS();
+
   // Preset buttons: click posts to /api/inject. Server broadcasts to all
   // connected /ws/shell sessions, including the iframe below. This is the
   // same path external curl callers use — proven via inject-e2e test.

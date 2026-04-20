@@ -17,6 +17,7 @@
                              (:file "cp-protocol")
                              (:file "cp-client")
                              (:file "term")
+                             (:file "control")
                              (:file "main")))))
 
 (defsystem "photo-ai-lisp/tests"

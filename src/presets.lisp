@@ -65,9 +65,27 @@
 ;; ---- hot reload ----------------------------------------------------------
 
 (defvar *reloadable-modules*
-  '(:presets :business-ui :term :main)
+  '(:presets :business-ui :term :control :main)
   "Source module keywords that /api/reload can hot-swap. Keys map to
    files under src/ via the naming convention src/<key>.lisp.")
+
+;; Observer registry. Any module that wants to react to a module reload
+;; (e.g. control.lisp broadcasting to /ws/control) pushes a function
+;; #'(lambda (label) ...) here. reload-handler fans out after a
+;; successful reload. Keeping the list here (not in control.lisp)
+;; avoids a cycle: the reload layer owns the event, subscribers attach
+;; themselves.
+(defvar *reload-observers* '())
+
+(defun notify-reload-observers (label)
+  "Call every function in *reload-observers* with LABEL. Individual
+   observer failures are logged and swallowed so one broken observer
+   cannot poison the others."
+  (dolist (fn *reload-observers*)
+    (handler-case (funcall fn label)
+      (error (e)
+        (format *error-output* "reload-observer-err: ~a~%" e)
+        (finish-output *error-output*)))))
 
 (defun %src-path (key)
   "Pathname to src/<key>.lisp relative to the running image's cwd."
@@ -104,13 +122,20 @@
                                         internal-time-units-per-second))))))
 
 (defun reload-handler (module-or-nil)
-  "HTTP handler body for /api/reload?module=NAME (nil = all)."
+  "HTTP handler body for /api/reload?module=NAME (nil = all).
+   After a successful reload, push a 'reload:<module>' frame to every
+   /ws/control listener so browsers hot-swap without an F5."
   (handler-case
       (let* ((result (if (and module-or-nil (plusp (length module-or-nil)))
                          (reload-module module-or-nil)
                          (reload-all-modules)))
              (modules (getf result :modules))
-             (mod     (getf result :module)))
+             (mod     (getf result :module))
+             (label   (cond
+                        (mod     (format nil "~(~a~)" mod))
+                        (modules "all")
+                        (t       "all"))))
+        (notify-reload-observers (format nil "reload:~a" label))
         (format nil
                 "{\"ok\":true,\"elapsed_ms\":~a~a}"
                 (getf result :elapsed-ms)
