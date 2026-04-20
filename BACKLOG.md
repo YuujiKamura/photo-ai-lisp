@@ -669,14 +669,14 @@ Pre-condition for starting Tier 3: all of Tier 2 checked.
            so later counting is unambiguous.
       Est: 0.5h · Agent hint: Gemini
 
-- [ ] **T3.c** daily checkpoint template
+- [x] **T3.c** daily checkpoint template
       Implements: `docs/tier-3/checkpoints/TEMPLATE.md`
       Deps: T3.a, T3.b · Branch: `feat/t3c-checkpoint-template`
       DoD: template captures per-day: hub-driven command count vs
            terminal-driven, blockers, UX frustrations, time-to-task.
       Est: 0.5h · Agent hint: Gemini
 
-- [ ] **T3.d** KEEP/ARCHIVE quantitative criteria
+- [x] **T3.d** KEEP/ARCHIVE quantitative criteria
       Implements: `docs/tier-3/verdict-criteria.md`
       Deps: T3.c · Branch: `feat/t3d-criteria`
       DoD: criteria are numeric and pre-registered — e.g. KEEP iff
