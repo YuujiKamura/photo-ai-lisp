@@ -96,14 +96,24 @@
     (format nil "~4,'0d-~2,'0d-~2,'0dT~2,'0d:~2,'0d:~2,'0dZ" y mo d h m s)))
 
 (defun %preview (s)
+  "Sanitized one-line preview of S for the trace ring. Tolerates NIL
+   chars (which can appear when a WS text-frame UTF-8 decode yields
+   an undefined code-point) by treating them as '.', so the trace
+   can't itself throw and crash whatever thread is recording."
   (let* ((s (or s ""))
          (n (min 80 (length s))))
-    (map 'string (lambda (c)
-                   (cond ((char= c #\Return) #\space)
-                         ((char= c #\Newline) #\space)
-                         ((< (char-code c) 32) #\.)
-                         (t c)))
-         (subseq s 0 n))))
+    (with-output-to-string (out)
+      (loop for i below n
+            for c = (char s i)
+            for code = (and (characterp c) (char-code c))
+            do (write-char
+                (cond
+                  ((null code)                         #\.)
+                  ((= code 13)                         #\space)
+                  ((= code 10)                         #\space)
+                  ((< code 32)                         #\.)
+                  (t                                   c))
+                out)))))
 
 (defun shell-trace-record (dir message)
   "Append one trace entry. DIR is :in or :out. MESSAGE is the string."
@@ -145,23 +155,23 @@
       (list "/bin/bash" "--norc" "--noprofile")))
 
 (defun %scrub-for-utf8 (s)
-  "Replace lone UTF-16 surrogates (#xD800–#xDFFF) and NIL/undefined
-   chars with U+FFFD. cmd.exe on Windows can emit bytes that decode
-   to surrogates under the default flexi-streams/hunchentoot setup,
-   which then blow up hunchensocket's UTF-8 text-frame encoder with
-   'NIL is not of type (MOD 1114112)'."
-  (let ((out (make-array (length s) :element-type 'character
-                                    :adjustable t :fill-pointer 0)))
+  "Collapse anything hunchensocket's UTF-8 text-frame encoder cannot
+   handle down to ASCII '?'. That includes: NIL chars (seen when the
+   child stream yields undefined code-points under edge cases), lone
+   UTF-16 surrogates (#xD800–#xDFFF), and anything past the Unicode
+   cap #x10FFFF. Result is guaranteed to be a simple-base-string of
+   only safe code-points, so send-text-message never throws the
+   'NIL is not of type (MOD 1114112)' error that otherwise cascades
+   into an outer handler-bind and closes the WS with status 1011."
+  (with-output-to-string (out)
     (loop for c across s
-          for code = (and c (char-code c))
-          do (vector-push-extend
-              (cond
-                ((null code) #\?)
-                ((<= #xD800 code #xDFFF) #\?)
-                ((> code #x10FFFF) #\?)
-                (t c))
-              out))
-    (coerce out 'simple-string)))
+          for code = (and (characterp c) (char-code c))
+          do (write-char (cond
+                           ((null code) #\?)
+                           ((<= #xD800 code #xDFFF) #\?)
+                           ((> code #x10FFFF) #\?)
+                           (t c))
+                         out))))
 
 ;;; 2c — stdout pump: read chunks from child stdout, push to websocket.
 (defun %stdout-pump (client child)
@@ -185,9 +195,12 @@
                (handler-case
                    (hunchensocket:send-text-message client chunk)
                  (error (e)
-                   (format *error-output* "PUMP-SEND-ERR type=~a msg=~a chars=~a~%"
-                           (type-of e) e
-                           (map 'list #'char-code (subseq chunk 0 (min 20 (length chunk)))))
+                   ;; Log but don't char-code the chunk — its bytes can
+                   ;; contain the very NIL that triggered the send error
+                   ;; in the first place, which would re-raise inside the
+                   ;; handler and tank the pump thread.
+                   (format *error-output* "PUMP-SEND-ERR type=~a msg=~a~%"
+                           (type-of e) e)
                    (finish-output *error-output*))))
              (setf (fill-pointer buf) 0))
             ((not (child-alive-p child))
@@ -247,15 +260,33 @@
       (setf (shell-client-child client) nil))))
 
 ;;; 2b — text message received: write to child stdin.
+;;; hunchensocket hands us the already-UTF-8-decoded string. If the frame
+;;; contained bytes that can't round-trip through latin-1 (what the child
+;;; stdin stream expects), write-string will raise. Scrub down to <=0xFF
+;;; before the write and log any residual failure visibly — silent
+;;; ignore-errors here masked real bugs (WS died immediately after an
+;;; un-encodable byte hit the child stream).
 (defmethod hunchensocket:text-message-received ((resource shell-resource)
                                                   (client   shell-client)
                                                   message)
-  (shell-trace-record :in message)
-  (let ((child (shell-client-child client)))
-    (when child
-      (ignore-errors
-        (write-string message (child-process-stdin child))
-        (finish-output (child-process-stdin child))))))
+  ;; hunchensocket's outer handler-bind in read-handle-loop closes the
+  ;; connection with status 1011 on ANY unhandled error here. Scrub +
+  ;; handler-case so a single bad byte never drops the whole session.
+  (handler-case
+      (progn
+        (shell-trace-record :in message)
+        (let ((child (shell-client-child client)))
+          (when child
+            (let ((safe (with-output-to-string (o)
+                          (loop for c across message
+                                for code = (and c (char-code c))
+                                when (and code (<= code #xFF))
+                                  do (write-char c o)))))
+              (write-string safe (child-process-stdin child))
+              (finish-output (child-process-stdin child))))))
+    (error (e)
+      (format *error-output* "WS-IN-ERR type=~a msg=~a~%" (type-of e) e)
+      (finish-output *error-output*))))
 
 (defun %find-shell-resource (request)
   (when (string= "/ws/shell" (hunchentoot:script-name request))
@@ -318,7 +349,10 @@
         setTimeout(connect, reconnectDelay);
         reconnectDelay = Math.min(reconnectDelay * 2, 5000);
       };
-      ws.onerror = () => { term.write('\\r\\n\\x1b[31m[ws error]\\x1b[0m\\r\\n'); };
+      // Browser fires onerror before onclose on most drop scenarios.
+      // The onclose handler already shows '[disconnected — retrying]'
+      // and reconnects, so a separate '[ws error]' line is just noise.
+      ws.onerror = () => {};
     }
     connect();
 
@@ -333,18 +367,21 @@
       for (let i = 0; i < data.length; i++) {
         const c = data[i];
         const code = c.charCodeAt(0);
-        if (c === '\\r')      out += '\\r\\n';       // Enter -> newline
-        else if (c === '\\b' || code === 0x7f) out += '\\b \\b';  // BS/DEL
-        else if (code >= 0x20 && code !== 0x7f) out += c;  // printable
-        // silently drop other control bytes (escape sequences etc.)
+        if (c === '\\r' || c === '\\n') out += '\\r\\n';       // Enter -> newline
+        else if (c === '\\b' || code === 0x7f) out += '\\b \\b';
+        else if (code >= 0x20 && code !== 0x7f) out += c;
       }
       if (out) term.write(out);
     }
+    // Hunchensocket + flexi-streams crashes a text frame that contains
+    // a bare CR byte (0x0D) with 'NIL is not of type (MOD 1114112)',
+    // which cascades into an outer handler-bind and closes the WS with
+    // 1011 Internal Error. Translate CR -> LF on the wire; cmd.exe
+    // accepts LF-terminated input just fine, and the WS stays healthy.
     term.onData((data) => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        localEcho(data);
-        ws.send(data);
-      }
+      if (ws && ws.readyState !== WebSocket.OPEN) return;
+      localEcho(data);
+      ws.send(data.replace(/\\r/g, '\\n'));
     });
 
     // Legacy: parent pages can still postMessage inject text directly.
