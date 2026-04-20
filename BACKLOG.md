@@ -558,11 +558,14 @@ data-flow diagrams, and the Tier-3 candidate-task decision.
             bug also fixed (was at COMMON-LISP-USER).
       Est: 1h · Agent hint: Claude Sonnet | Codex
 
-- [ ] **T1.b** CP round-trip smoke: INPUT / SHOW / STATE / LIST
+- [x] **T1.b** CP round-trip smoke: INPUT / SHOW / STATE / LIST
       Implements: `scripts/cp-smoke.lisp`, `docs/tier-1/cp-roundtrip.log`
-      Deps: T1.a · Branch: `feat/t1b-cp-smoke`
+      Deps: T1.a · Branch: `feat/tier-1-finish`
       DoD: one script that sends each of the 4 verbs and prints JSON
            replies; committed log shows all 4 receive non-error responses.
+      Done: 2026-04-21 — all 4 verbs returned `:ok t` against live
+            deckpilot session `ghostty-30028`; SHOW :DATA base64 decodes
+            to the expected `echo t1b-ping` round-trip in cmd.exe.
       Est: 2h · Agent hint: Claude Sonnet
 
 - [ ] **T1.c** `scripts/boot-hub.lisp` exits 0 with green log
