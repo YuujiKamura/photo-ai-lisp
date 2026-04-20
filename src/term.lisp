@@ -55,22 +55,43 @@
   (bordeaux-threads:with-lock-held (*shell-clients-lock*)
     (setf *shell-clients* (remove client *shell-clients*))))
 
+(defun %normalize-child-input (s)
+  "Normalize S for writing to the child's stdin. Two transforms:
+
+    - Drop any char whose code does not fit latin-1 (>#xFF). The
+      child stream is opened :external-format :latin-1 so anything
+      outside that range would raise on write.
+
+    - Translate LF (code 10) to CR (code 13). When the child is
+      running under our ConPTY bridge, cmd.exe only treats CR as
+      the Enter key — bare LF is just a control char it buffers and
+      never executes. Callers on the WebSocket side send LF because
+      hunchensocket crashes 1011 on a bare-CR text frame (see the
+      term.onData replace in /shell), so we flip it back here."
+  (with-output-to-string (o)
+    (loop for c across s
+          for code = (and c (char-code c))
+          when (and code (<= code #xFF))
+            do (write-char (if (= code 10) #\Return c) o))))
+
 (defun shell-broadcast-input (text)
   "Write TEXT to the child stdin of every connected shell client.
    Returns the number of clients reached. TEXT is recorded in the
-   trace ring as :in (dir) for observability."
+   trace ring as :in (dir) for observability. LF is translated to
+   CR so ConPTY-backed children receive a real Enter keystroke."
   (let ((recipients (bordeaux-threads:with-lock-held (*shell-clients-lock*)
                       (copy-list *shell-clients*))))
     (shell-trace-record :in text)
-    (loop for c in recipients
-          for child = (shell-client-child c)
-          when child
-            count (handler-case
-                      (progn
-                        (write-string text (child-process-stdin child))
-                        (finish-output (child-process-stdin child))
-                        t)
-                    (error () nil)))))
+    (let ((safe (%normalize-child-input text)))
+      (loop for c in recipients
+            for child = (shell-client-child c)
+            when child
+              count (handler-case
+                        (progn
+                          (write-string safe (child-process-stdin child))
+                          (finish-output (child-process-stdin child))
+                          t)
+                      (error () nil))))))
 
 (defun inject-handler (text)
   "HTTP handler body for GET /api/inject?text=... Returns
@@ -277,11 +298,7 @@
         (shell-trace-record :in message)
         (let ((child (shell-client-child client)))
           (when child
-            (let ((safe (with-output-to-string (o)
-                          (loop for c across message
-                                for code = (and c (char-code c))
-                                when (and code (<= code #xFF))
-                                  do (write-char c o)))))
+            (let ((safe (%normalize-child-input message)))
               (write-string safe (child-process-stdin child))
               (finish-output (child-process-stdin child))))))
     (error (e)
@@ -356,31 +373,20 @@
     }
     connect();
 
-    // Local echo. cmd.exe with piped stdin (what the Lisp side gives
-    // us via uiop:launch-program — not ConPTY) does not echo typed
-    // characters, so the user sees nothing until Enter fires a new
-    // prompt. Echo printable + a handful of control chars client-side
-    // so typing feels live. Safe because cmd does not emit hidden
-    // password prompts; switch to a real PTY later to drop this.
-    function localEcho(data) {
-      let out = '';
-      for (let i = 0; i < data.length; i++) {
-        const c = data[i];
-        const code = c.charCodeAt(0);
-        if (c === '\\r' || c === '\\n') out += '\\r\\n';       // Enter -> newline
-        else if (c === '\\b' || code === 0x7f) out += '\\b \\b';
-        else if (code >= 0x20 && code !== 0x7f) out += c;
-      }
-      if (out) term.write(out);
-    }
+    // No client-side local echo. cmd.exe in piped-stdin mode still
+    // echoes every command line it reads before executing it, so
+    // echoing locally double-prints every character the user types.
+    // Downside: `set /p` style prompts (e.g. scripts/pick-agent.cmd)
+    // stay silent while the user types — inherent cmd-on-pipe
+    // limitation, fixed only by running the child under a real ConPTY.
+    //
     // Hunchensocket + flexi-streams crashes a text frame that contains
     // a bare CR byte (0x0D) with 'NIL is not of type (MOD 1114112)',
-    // which cascades into an outer handler-bind and closes the WS with
+    // cascading into an outer handler-bind and closing the WS with
     // 1011 Internal Error. Translate CR -> LF on the wire; cmd.exe
     // accepts LF-terminated input just fine, and the WS stays healthy.
     term.onData((data) => {
       if (ws && ws.readyState !== WebSocket.OPEN) return;
-      localEcho(data);
       ws.send(data.replace(/\\r/g, '\\n'));
     });
 

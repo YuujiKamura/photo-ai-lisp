@@ -85,14 +85,19 @@
       (is-true (search "xterm.js" html)
                "term-page HTML should reference xterm.js"))))
 
-;; UT2g: shell-page returns HTML containing "xterm.js".
-(test shell-page-contains-xterm-js
+;; UT2g: shell-page renders a ghostty-web-backed terminal.
+;; The page used to import xterm.js from a CDN; commit 7247996 replaced
+;; that with the vendored ghostty-web WASM bundle served from /vendor/
+;; by the Lisp hub itself. Assert on the current shape.
+(test shell-page-imports-ghostty-web
   (let ((hunchentoot:*reply* (make-instance 'hunchentoot:reply)))
     (let ((html (photo-ai-lisp::shell-page)))
       (is-true (stringp html)
                "shell-page should return a string")
-      (is-true (search "xterm.js" html)
-               "shell-page HTML should reference xterm.js"))))
+      (is-true (search "/vendor/ghostty-web.js" html)
+               "shell-page should import the vendored ghostty-web bundle")
+      (is-true (search "/ws/shell" html)
+               "shell-page should connect to /ws/shell"))))
 
 ;;; UT2h — agent picker (commit 31b0f1f): auto-inject on /ws/shell connect.
 
@@ -132,3 +137,58 @@
                   "DISABLE_AGENT_PICKER=1 should disable auto-pick")
         (is-true photo-ai-lisp::*auto-pick-agent*
                  "picker should be enabled when DISABLE_AGENT_PICKER is unset"))))
+
+;;; UT2i — %normalize-child-input: latin-1 scrub + LF->CR for ConPTY.
+;;; Justified by the conpty-bridge integration test (ConPTY needs CR
+;;; to fire the Enter key); the WS frame path must flip LF back to CR
+;;; before writing into the child, or cmd.exe buffers lines forever.
+
+(test normalize-child-input-plain-ascii-passthrough
+  (is (string= "hello"
+               (photo-ai-lisp::%normalize-child-input "hello"))
+      "pure ASCII should survive untouched"))
+
+(test normalize-child-input-empty-string
+  (is (string= "" (photo-ai-lisp::%normalize-child-input ""))
+      "empty string should stay empty"))
+
+(test normalize-child-input-lf-becomes-cr
+  (is (string= (string #\Return)
+               (photo-ai-lisp::%normalize-child-input (string #\Newline)))
+      "a bare LF must be rewritten as CR so ConPTY treats it as Enter"))
+
+(test normalize-child-input-lf-inside-line
+  (is (string= (format nil "echo hi~C" #\Return)
+               (photo-ai-lisp::%normalize-child-input
+                (format nil "echo hi~C" #\Newline)))
+      "LF terminating a command should be flipped to CR"))
+
+(test normalize-child-input-cr-left-alone
+  (is (string= (string #\Return)
+               (photo-ai-lisp::%normalize-child-input (string #\Return)))
+      "an already-CR byte must pass through without duplication"))
+
+(test normalize-child-input-multi-lf-all-flipped
+  (is (string= (format nil "a~Cb~Cc" #\Return #\Return)
+               (photo-ai-lisp::%normalize-child-input
+                (format nil "a~Cb~Cc" #\Newline #\Newline)))
+      "every LF in the input should be flipped to CR"))
+
+(test normalize-child-input-drops-out-of-latin1
+  ;; The child stream is :latin-1; anything above #xFF cannot round-
+  ;; trip and would otherwise raise on write. CL doesn't support
+  ;; \xNN string escapes, so build the expected string via code-char.
+  (let* ((in  (format nil "ok~C~Cend" (code-char #x00A9) (code-char #x2603)))
+         (exp (format nil "ok~Cend" (code-char #x00A9)))
+         (out (photo-ai-lisp::%normalize-child-input in)))
+    (is (string= exp out)
+        "keeps <=0xFF chars and drops anything past latin-1 range")))
+
+(test normalize-child-input-drops-surrogate-like-code
+  ;; Surrogates (U+D800..U+DFFF) never appear in valid Unicode strings
+  ;; but hunchensocket's decoder occasionally synthesizes them from
+  ;; bad UTF-8; they're >0xFF so must be dropped.
+  (let ((in (format nil "x~Cy" (code-char #xD800))))
+    (is (string= "xy"
+                 (photo-ai-lisp::%normalize-child-input in))
+        "lone surrogates must be dropped")))

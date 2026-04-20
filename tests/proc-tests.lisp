@@ -18,17 +18,30 @@
            "child-process-stdout accessor should exist"))
 
 (test proc-default-argv-platform
-  "%default-argv should return the platform-appropriate command."
+  "%default-argv should return the platform-appropriate command.
+   On Windows we prefer tools/conpty-bridge/conpty-bridge.exe when built
+   (wraps cmd.exe in a real ConPTY so interactive CLIs work); if the
+   bridge binary isn't present we fall back to plain cmd.exe."
   (let ((argv (photo-ai-lisp::%default-argv)))
     (is-true (listp argv)
              "%default-argv should return a list, got: ~s" argv)
     (is-true (stringp (first argv))
              "first element of argv should be a string, got: ~s" (first argv))
-    (if (uiop:os-windows-p)
-        (is (string= "cmd.exe" (first argv))
-            "Windows default should be cmd.exe, got: ~s" (first argv))
-        (is (string= "/bin/bash" (first argv))
-            "Unix default should be /bin/bash, got: ~s" (first argv)))))
+    (cond
+      ((not (uiop:os-windows-p))
+       (is (string= "/bin/bash" (first argv))
+           "Unix default should be /bin/bash, got: ~s" (first argv)))
+      ((uiop:file-exists-p photo-ai-lisp::*conpty-bridge-path*)
+       (is-true (search "conpty-bridge" (first argv))
+                "Windows with bridge present should spawn the bridge, got: ~s"
+                (first argv))
+       (is (string= "cmd.exe" (second argv))
+           "Bridge should be passed cmd.exe as its argument, got: ~s"
+           (second argv)))
+      (t
+       (is (string= "cmd.exe" (first argv))
+           "Windows without bridge should spawn cmd.exe, got: ~s"
+           (first argv))))))
 
 (test proc-spawn-child-returns-child-process
   "spawn-child should return a child-process struct."

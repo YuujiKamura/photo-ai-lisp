@@ -5,10 +5,25 @@
   stdin     ; writable stream → child stdin
   stdout)   ; readable stream ← child stdout (stderr merged in)
 
+(defvar *conpty-bridge-path*
+  (namestring (merge-pathnames "tools/conpty-bridge/conpty-bridge.exe"
+                               (uiop:getcwd)))
+  "Path to the ConPTY bridge binary. When present and runnable, Windows
+   children are spawned through it so they see a real Pseudo Console
+   (interactive CLIs like `claude` detect it and start a REPL; `set /p`
+   echoes). Falls back to plain cmd.exe with piped stdio if the bridge
+   isn't built. Build with:
+     cd tools/conpty-bridge && go build -o conpty-bridge.exe .")
+
 (defun %default-argv ()
-  (if (uiop:os-windows-p)
-      '("cmd.exe")
-      '("/bin/bash")))
+  (cond
+    ((and (uiop:os-windows-p)
+          (uiop:file-exists-p *conpty-bridge-path*))
+     (list *conpty-bridge-path* "cmd.exe"))
+    ((uiop:os-windows-p)
+     '("cmd.exe"))
+    (t
+     '("/bin/bash"))))
 
 (defun spawn-child (&optional (argv (%default-argv)))
   "Launch ARGV as a subprocess with piped stdio.

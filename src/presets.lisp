@@ -65,7 +65,7 @@
 ;; ---- hot reload ----------------------------------------------------------
 
 (defvar *reloadable-modules*
-  '(:presets :business-ui :term :control :main)
+  '(:proc :presets :business-ui :term :control :main)
   "Source module keywords that /api/reload can hot-swap. Keys map to
    files under src/ via the naming convention src/<key>.lisp.")
 
