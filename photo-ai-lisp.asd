@@ -19,7 +19,7 @@
                              (:file "main")))))
 
 (defsystem "photo-ai-lisp/tests"
-  :depends-on ("photo-ai-lisp" "fiveam")
+  :depends-on ("photo-ai-lisp" "fiveam" "drakma")
   :components ((:module "tests"
                 :serial t
                 :components ((:file "package")
@@ -36,6 +36,7 @@
                              (:file "business-ui-tests")
                              (:file "shell-trace-tests")
                              (:file "reload-tests")
-                             (:file "inject-tests"))))
+                             (:file "inject-tests")
+                             (:file "inject-e2e-scenario"))))
   :perform (test-op (o c)
              (uiop:symbol-call '#:photo-ai-lisp/tests '#:run-tests)))
