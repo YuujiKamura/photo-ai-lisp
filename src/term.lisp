@@ -628,9 +628,18 @@ Returns the number of clients closed."
       } catch (_) {}
     }
     if (term.textarea) {
-      term.textarea.addEventListener('compositionstart',  updateImePos);
-      term.textarea.addEventListener('compositionupdate', updateImePos);
-      term.textarea.addEventListener('compositionend',    resetImePos);
+      term.textarea.addEventListener('compositionstart', (e) => {
+        updateImePos();
+        try { term.setPreedit(e.data || ''); } catch (_) {}
+      });
+      term.textarea.addEventListener('compositionupdate', (e) => {
+        updateImePos();
+        try { term.setPreedit(e.data || ''); } catch (_) {}
+      });
+      term.textarea.addEventListener('compositionend', () => {
+        resetImePos();
+        try { term.clearPreedit(); } catch (_) {}
+      });
       // Re-anchor after cursor movement so a subsequent composition starts
       // at the updated caret position.
       term.textarea.addEventListener('keyup', () => requestAnimationFrame(updateImePos));
