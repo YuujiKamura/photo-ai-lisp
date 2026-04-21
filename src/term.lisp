@@ -255,9 +255,15 @@
                          out))))
 
 ;;; 2c — stdout pump: read chunks from child stdout, push to websocket.
+;;; Binary frame transport: child stdout bytes are forwarded as raw
+;;; octets over a WebSocket binary frame, so UTF-8 multi-byte sequences
+;;; (box drawing from claude/gemini TUIs, Japanese text) survive the
+;;; Lisp→browser hop. The previous text-frame path did (code-char b)
+;;; per byte and then UTF-8-encoded the resulting codepoints, which
+;;; doubled every non-ASCII byte and broke ghostty-web's UTF-8 parser.
 (defun %stdout-pump (client child)
   (let ((out (child-process-stdout child))
-        (buf (make-array 512 :element-type 'character
+        (buf (make-array 512 :element-type '(unsigned-byte 8)
                              :adjustable t :fill-pointer 0)))
     (handler-case
         (loop
@@ -268,18 +274,19 @@
                    (cond
                      ((eq b :eof) (return))
                      ((null b) nil)   ; defensive: some streams return NIL
-                     (t (vector-push-extend (code-char b) buf))))
+                     (t (vector-push-extend b buf))))
                (error () nil)))
             ((plusp (length buf))
-             (let ((chunk (%scrub-for-utf8 (copy-seq buf))))
-               (shell-trace-record :out chunk)
+             (let* ((chunk (copy-seq buf))
+                    ;; Trace preview is Latin-1 mapped for display only;
+                    ;; the wire carries the raw octets unchanged.
+                    (preview (map 'string
+                                  (lambda (b) (code-char (logand b #xFF)))
+                                  chunk)))
+               (shell-trace-record :out preview)
                (handler-case
-                   (hunchensocket:send-text-message client chunk)
+                   (hunchensocket:send-binary-message client chunk)
                  (error (e)
-                   ;; Log but don't char-code the chunk — its bytes can
-                   ;; contain the very NIL that triggered the send error
-                   ;; in the first place, which would re-raise inside the
-                   ;; handler and tank the pump thread.
                    (format *error-output* "PUMP-SEND-ERR type=~a msg=~a~%"
                            (type-of e) e)
                    (finish-output *error-output*))))
@@ -397,8 +404,24 @@
   <meta charset=\"utf-8\">
   <title>shell</title>
   <style>
-    html, body { background: #1e1e1e; margin: 0; padding: 0; height: 100%; }
+    html, body {
+      background: #1e1e1e; margin: 0; padding: 0; height: 100%;
+      /* Kill every shaping feature that could shift cell boundaries.
+         ghostty-web's canvas renderer measures glyph advance via the
+         OS font stack, so disabling ligatures/kerning/contextual-alts
+         here keeps each cell to a fixed integer advance. */
+      font-feature-settings: 'kern' 0, 'liga' 0, 'dlig' 0, 'clig' 0, 'calt' 0;
+      font-variant-ligatures: none;
+      font-kerning: none;
+      text-rendering: geometricPrecision;
+    }
     #terminal { width: 100%; height: 100%; }
+    /* Snap the WASM renderer's backing canvas to device pixels so row
+       height doesn't drift by a fractional pixel across scrolls. */
+    #terminal canvas {
+      image-rendering: crisp-edges;
+      transform: translateZ(0);
+    }
   </style>
 </head>
 <body>
@@ -408,21 +431,29 @@
     // PTY lives on the Lisp side at /ws/shell. Keep the protocol dumb so
     // /api/inject and the picker auto-inject (term.lisp client-connected)
     // both continue to reach this PTY without a separate node daemon.
-    import { init, Terminal, FitAddon } from '/vendor/ghostty-web.js';
+    import { init, Terminal } from '/vendor/ghostty-web.js';
     await init();
 
+    // Font stack aimed at WT-parity: Cascadia (ships with Windows
+    // Terminal, ligature-free Mono variant first), then Meiryo UI
+    // as the CJK fallback that keeps ambiguous-width glyphs on a
+    // full cell, then Consolas as the universal Windows monospace.
+    //
+    // Dimensions locked to conpty-bridge's CONPTY_COLS/ROWS defaults
+    // (80x24). FitAddon is intentionally NOT loaded: the bridge has no
+    // resize protocol, so claude/gemini would draw at 80 cols while
+    // the browser sized itself to the container — absolute cursor
+    // moves would land at the wrong column and the input row would
+    // 'float' mid-screen. Keeping both sides at 80x24 makes every
+    // escape sequence land where the TUI intended.
     const term = new Terminal({
       cols: 80, rows: 24,
-      fontFamily: 'JetBrains Mono, Consolas, monospace',
+      fontFamily: \"'Cascadia Mono', 'Cascadia Code', 'Meiryo UI', Consolas, 'Lucida Console', monospace\",
       fontSize: 14,
       theme: { background: '#1e1e1e', foreground: '#d4d4d4' },
     });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
     const container = document.getElementById('terminal');
     await term.open(container);
-    fit.fit();
-    fit.observeResize();
     // Ghostty-web renders into a canvas; without explicit focus the iframe
     // swallows keystrokes. Re-grab focus on any pointer event so clicking
     // anywhere in the terminal area always routes keys to the PTY.
@@ -433,8 +464,13 @@
     let ws = null, reconnectDelay = 500;
     function connect() {
       ws = new WebSocket('ws://' + location.host + '/ws/shell');
+      // Binary frames carry raw PTY octets so UTF-8 multi-byte sequences
+      // (box drawing, Japanese, emoji) reach the VT parser intact.
+      ws.binaryType = 'arraybuffer';
       ws.onopen = () => { reconnectDelay = 500; };
-      ws.onmessage = (e) => { term.write(e.data); };
+      ws.onmessage = (e) => {
+        term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data));
+      };
       ws.onclose = () => {
         term.write('\\r\\n\\x1b[31m[disconnected — retrying]\\x1b[0m\\r\\n');
         setTimeout(connect, reconnectDelay);
