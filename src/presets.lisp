@@ -165,6 +165,12 @@
      :group "解析"
      :input (format nil "~a~%~a" ,bias *analyze-footer*)))
 
+;; Reset the registry on every load of this file so hot-reload replaces
+;; the bundled set atomically. Without this, removed DEFPRESET forms
+;; leave orphan entries in *presets* / *preset-order* after reload.
+(clrhash *presets*)
+(setf *preset-order* '())
+
 (defpreset "学習"
   :argv (list "claude" "--dangerously-skip-permissions")
   :group nil
