@@ -55,7 +55,7 @@ if [[ -x "$WINSHOT" ]]; then
   # If no photo-ai-lisp window exists yet, spawn one and give it time.
   have_win=$("$WINSHOT" --list 2>/dev/null | awk '$3=="yes"' | grep -c "photo-ai-lisp" || true)
   if [[ "$have_win" -eq 0 ]] && [[ -x "$CHROME" ]]; then
-    "$CHROME" --app="$HUB/" --window-size=1100,700 >/dev/null 2>&1 &
+    "$CHROME" --app="$HUB/" --window-size=1400,900 >/dev/null 2>&1 &
     disown 2>/dev/null || true
     sleep 4
   fi
