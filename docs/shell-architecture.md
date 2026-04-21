@@ -1,7 +1,7 @@
 # /ws/shell Architecture
 
 Scope: the browser-to-`claude` path served by `/ws/shell` on the Lisp hub
-(port 8090). Covers the five transport layers between `xterm.js` in the
+(port 8090). Covers the five transport layers between `ghostty-web` in the
 `/shell` page and the child `cmd.exe` + agent REPL, plus the observability
 and testing surfaces. Written for engineers who need to debug a silent
 picker failure, add a new preset, or retarget the transport — not a tour
@@ -24,7 +24,7 @@ Supporting audit docs: `.dispatch/inject-contract-audit.md`,
 
 ```
   Browser (/shell page)
-      │  xterm.js / ghostty-web
+      │  ghostty-web (WASM terminal emulator)
       │  term.onData: replace \r -> \n  (Layer 1)
       ▼
   WebSocket text frame

@@ -32,6 +32,8 @@
                              (:file "proc-tests")
                              (:file "proc-integration-tests")
                              (:file "term-tests")
+                             (:file "vendor-mime-tests")
+                             (:file "vendor-handler-tests")
                              (:file "main-tests")
                              (:file "agent-tests")
                              (:file "cp-protocol-tests")

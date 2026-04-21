@@ -4,7 +4,7 @@
 ;;;
 ;;; Each preset is a named entry with argv tokens plus an optional
 ;;; initial input prompt. The UI joins argv with spaces + CR and
-;;; postMessages the result into the /shell iframe, where xterm.js
+;;; postMessages the result into the /shell iframe, where ghostty-web
 ;;; forwards it over /ws/shell into the already-running shell (cmd.exe
 ;;; on Windows, bash on Unix). No server-side subprocess spawn happens
 ;;; here — the injected text runs inside the shell the user is already
@@ -152,7 +152,7 @@
 (defparameter *claude-argv* '("claude" "--dangerously-skip-permissions")
   "Spawn line shared by every bundled preset. claude CLI with
    permissions skipped because the agent runs inside the same shell
-   the user is already supervising via xterm.js.")
+   the user is already supervising via ghostty-web.")
 
 (defmacro def-analyze-preset (name bias)
   "Register a 解析-group preset NAME whose initial prompt is BIAS plus

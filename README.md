@@ -1,52 +1,51 @@
 <img width="1519" height="1032" alt="image" src="https://github.com/user-attachments/assets/8f721815-c462-4880-ae01-c5d6ec94046d" />
+
 # photo-ai-lisp
 
-工事写真パイプラインのローカルオーケストレータ。ターミナル表示 + マスタ CSV + スキル群を 1 パッケージで携帯・配布することがゴール。
+工事写真まわりの作業を 1 画面でまとめて回すためのローカルアプリ。ブラウザで開くと、左に工種マスタとよく使うボタン、右にターミナルが並んでいて、ボタンを押すとターミナルへコマンドが流し込まれる。
 
-シリーズ（同ドメインを言語違いで書いた並走リポ）の 1 つ。位置付けと方針は [#20](https://github.com/YuujiKamura/photo-ai-lisp/issues/20)、UI 構成は [#21](https://github.com/YuujiKamura/photo-ai-lisp/issues/21)。
+## 動かすのに要るもの
 
-## 必要なもの
-
-- SBCL 2.6+
-- Quicklisp（`~/quicklisp/setup.lisp` があること）
-- Windows（Git Bash） or Unix
+- SBCL 2.6 以降
+- Quicklisp（`~/quicklisp/setup.lisp` が置いてあること）
+- Windows（Git Bash）か Unix 系
+- ブラウザ（Chrome / Edge / Firefox どれでも）
 
 ## 起動
 
+Git Bash や macOS / Linux のターミナルから:
+
 ```bash
-bash scripts/demo.sh
+cd ~/photo-ai-lisp && bash scripts/demo.sh
 ```
 
-`SERVER http://localhost:8090/` と出たらブラウザで開く。`Ctrl-C` で停止。
+Windows のコマンドプロンプトから:
 
-Windows コマンドプロンプトからは `scripts\demo.cmd`。
+```
+cd /d %USERPROFILE%\photo-ai-lisp && scripts\demo.cmd
+```
 
-## 画面
+しばらく待って `SERVER http://localhost:8090/` と出たら、そのアドレスをブラウザで開く。止めるときは起動したターミナルで `Ctrl-C`。
 
-- 左サイドバー：工種マスタ（`masters/*.csv` から自動ロード）、プリセットボタン
-- 右上タブ：ガイド / マスタツリー / リザルト / 問診票
-- 右下：ghostty-web を iframe で埋め込むペイン
+### アプリ風の独立ウィンドウで開く（任意）
 
-プリセットボタンをクリックすると、argv を joins space + CR した文字列が下のターミナル iframe に `postMessage` で注入され、そのまま実行される（サーバ側サブプロセスは起動せず、見えているシェルで動く）。
+ブラウザのタブやアドレスバーを消して「アプリっぽい」見た目にしたいときは Chrome を `--app` モードで起動する:
 
-## エンドポイント
+```bash
+chrome --app=http://localhost:8090/ --window-size=1280,780
+```
 
-| | |
-|---|---|
-| `GET /` | メイン UI |
-| `GET /api/masters` | `masters/*.csv` を JSON で返す |
-| `GET /api/presets` | 登録済みプリセット一覧（UI が起動時に読む） |
-| `GET /api/shell-trace` | /ws/shell を流れた直近 100 フレームの ring buffer |
-| `GET /api/inject?text=...` | 接続中の全 /ws/shell セッションに文字列をブロードキャスト |
-| `GET /api/reload?module=<key>` | サーバ無停止で `src/<key>.lisp` 再読込 |
-| `POST /api/eval` | S 式を body に POST すると走ってるサーバで eval（localhost 限定） |
-| `GET /shell` | 内蔵ターミナル（xterm.js + /ws/shell） |
-| `GET /cases` | ケース一覧（JSON） |
-| `GET /cases/:id` | ケース詳細（HTML） |
+## 画面の見かた
 
-## プリセットの追加
+- **左サイドバー**: 工種マスタ + プリセットボタン
+- **右上**: ガイド / マスタツリー / リザルト / 問診票 のタブ
+- **右下**: ターミナル（ボタンを押すとここにコマンドが流し込まれる）
 
-`src/presets.lisp` の `defpreset` で登録。3 キーワード:
+ボタンを押すたびに裏でプロセスが立ち上がるわけではなく、画面に見えているターミナル 1 本で順番に動くので、何が走っているかは常に目で追える。
+
+## ボタン（プリセット）の足しかた
+
+`src/presets.lisp` に 1 つ追記して保存:
 
 ```lisp
 (defpreset "施工状況"
@@ -55,50 +54,15 @@ Windows コマンドプロンプトからは `scripts\demo.cmd`。
   :input "写真区分=施工状況 のバイアスで photo-ai-workflow 全段を回せ。…")
 ```
 
-- `:argv` … クリック時にターミナルへ流す行（`\n` 自動付与）
-- `:input` … argv 起動後にエージェントへ続けて投げる初回プロンプト（任意・nil 可）
-- `:group` … サイドバーで束ねるヘッダ名。`nil` ならトップレベルにフラット表示
+- `:argv` … クリックしたときにターミナルへ流れる 1 行
+- `:input` … その次に続けて送る文字列（省略可）
+- `:group` … サイドバーで束ねる見出し名（省略すると最上段）
 
-宣言順がそのまま UI の表示順になる（`*preset-order*`）。同名 preset を REPL
-で再評価しても順番は維持される。同じ `:group` 値を持つ複数 preset は宣言順で
-1 つのヘッダ配下に並ぶ（2 階層メニュー）。
-
-解析系プリセットは共通フッターを持つので、`def-analyze-preset` ヘルパで
-`:group "解析"` と `*analyze-footer*` の差し込みが自動化されている。バイアス
-本文だけ書けばよい。
-
-## ホットリロード
-
-サーバ停止なしでコード変更を反映する手段が 2 つ：
-
-1. `curl http://localhost:8090/api/reload?module=presets`
-   → `src/presets.lisp` を `load` し直す（10〜50ms）。プリセット追加・修正が即 UI に反映
-   → `module=all` で全 `*reloadable-modules*` を順次再読込
-
-2. `scripts/demo.sh` は起動時に swank を port 4005 で立てる（失敗しても続行）。
-   Emacs から `M-x slime-connect localhost 4005` で接続してそのまま式評価が可能。
-   `NO_SWANK=1` で無効化。
-
-## アーキテクチャ
-
-- [docs/shell-architecture.md](docs/shell-architecture.md) — `/ws/shell` → conpty-bridge → cmd.exe → agent REPL の 5 レイヤ構造と picker 自動投入の仕組み
-
-## ディレクトリ
+書いた順がそのままボタンの並び順。サーバを止めずに変更を反映したいときは、下の URL をブラウザで 1 回踏む:
 
 ```
-src/          Common Lisp 本体
-static/       HTML/CSS/JS（photo-ai-rust/web/index.html の移植スケルトン）
-masters/      工種マスタ CSV（携帯する中身）
-scripts/      demo 起動スクリプト
-docs/         仕様・検証ログ
-tests/        FiveAM テスト
+http://localhost:8090/api/reload?module=presets
 ```
-
-## 出典
-
-- UI 構造は [photo-ai-rust/web/index.html](https://github.com/YuujiKamura/photo-ai-rust/blob/main/web/index.html) から移植
-- ターミナル描画は [ghostty-web](https://github.com/coder/ghostty-web) を iframe で同梱予定
-- スキル群は [photo-ai-skills](https://github.com/YuujiKamura/photo-ai-skills) を subprocess 呼び出し予定
 
 ## ライセンス
 

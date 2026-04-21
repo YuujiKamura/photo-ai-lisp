@@ -28,28 +28,11 @@
                      'hunchentoot:easy-acceptor)
            "ws-easy-acceptor must be a subtype of easy-acceptor"))
 
-;; UT2b: global resource instances have the expected types.
-(test term-echo-resource-type
-  (is-true (typep photo-ai-lisp::*echo-resource*
-                  'photo-ai-lisp::echo-resource)
-           "*echo-resource* should be an echo-resource instance"))
-
+;; UT2b: global resource instance has the expected type.
 (test term-shell-resource-type
   (is-true (typep photo-ai-lisp::*shell-resource*
                   'photo-ai-lisp::shell-resource)
            "*shell-resource* should be a shell-resource instance"))
-
-;; UT2c: %find-echo-resource dispatches on /ws/echo, returns nil elsewhere.
-(test term-find-echo-resource-match
-  (is (eq photo-ai-lisp::*echo-resource*
-          (photo-ai-lisp::%find-echo-resource (%make-req "/ws/echo")))
-      "%find-echo-resource should return *echo-resource* for /ws/echo"))
-
-(test term-find-echo-resource-no-match
-  (is (null (photo-ai-lisp::%find-echo-resource (%make-req "/ws/shell")))
-      "%find-echo-resource should return nil for /ws/shell")
-  (is (null (photo-ai-lisp::%find-echo-resource (%make-req "/")))
-      "%find-echo-resource should return nil for /"))
 
 ;; UT2d: %find-shell-resource dispatches on /ws/shell, returns nil elsewhere.
 (test term-find-shell-resource-match
@@ -58,32 +41,16 @@
       "%find-shell-resource should return *shell-resource* for /ws/shell"))
 
 (test term-find-shell-resource-no-match
-  (is (null (photo-ai-lisp::%find-shell-resource (%make-req "/ws/echo")))
-      "%find-shell-resource should return nil for /ws/echo")
+  (is (null (photo-ai-lisp::%find-shell-resource (%make-req "/ws/other")))
+      "%find-shell-resource should return nil for unrelated /ws paths")
   (is (null (photo-ai-lisp::%find-shell-resource (%make-req "/")))
       "%find-shell-resource should return nil for /"))
 
-;; UT2e: *websocket-dispatch-table* contains both dispatch functions.
-(test term-dispatch-table-has-echo-fn
-  (is-true (find 'photo-ai-lisp::%find-echo-resource
-                 hunchensocket:*websocket-dispatch-table*)
-           "*websocket-dispatch-table* should contain %find-echo-resource"))
-
+;; UT2e: *websocket-dispatch-table* contains the shell dispatch function.
 (test term-dispatch-table-has-shell-fn
   (is-true (find 'photo-ai-lisp::%find-shell-resource
                  hunchensocket:*websocket-dispatch-table*)
            "*websocket-dispatch-table* should contain %find-shell-resource"))
-
-;; UT2f: term-page returns HTML containing "xterm.js".
-;;  hunchentoot:*reply* must be bound to avoid an unbound-variable error from
-;;  (setf (content-type*) ...) inside the handler.
-(test term-page-contains-xterm-js
-  (let ((hunchentoot:*reply* (make-instance 'hunchentoot:reply)))
-    (let ((html (photo-ai-lisp::term-page)))
-      (is-true (stringp html)
-               "term-page should return a string")
-      (is-true (search "xterm.js" html)
-               "term-page HTML should reference xterm.js"))))
 
 ;; UT2g: shell-page renders a ghostty-web-backed terminal.
 ;; The page used to import xterm.js from a CDN; commit 7247996 replaced
