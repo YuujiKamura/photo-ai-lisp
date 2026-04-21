@@ -557,8 +557,9 @@ Returns the number of clients closed."
        textarea itself prevents it from eating mouse clicks meant for the
        canvas — focus is set programmatically on pointerdown. */
     #ime-sink {
-      position: absolute;
-      inset: 0;
+      position: fixed;
+      left: 0;
+      top: 0;
       opacity: 0;
       background: transparent;
       border: none;
@@ -570,6 +571,35 @@ Returns the number of clients closed."
       caret-color: transparent;
       pointer-events: none;
       font-size: 14px;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+    /* composing: make visible at caret position so OS native IME popup
+       anchors at the right spot and preedit text (underlined hiragana) is
+       rendered by the browser's native IME path inside the textarea.
+       Matches the Hecker WT/TSF pattern: we can't hook TSF directly in DOM,
+       so we move the textarea to caret pixel coords and let the native IME
+       draw into it — same effect as ImmSetCompositionWindow(CFS_POINT).
+       background:transparent + canvas-matched color avoids layout desync
+       visual artifacts (composition text sits on top of canvas, disappears
+       on compositionend — short-lived so tolerable). */
+    #ime-sink.composing {
+      opacity: 1;
+      color: var(--fg, #d4d4d4);
+      background: transparent;
+      caret-color: var(--fg, #d4d4d4);
+      font-family: 'Cascadia Mono', 'Cascadia Code', 'Meiryo UI', Consolas, monospace;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+      border: none;
+      pointer-events: auto;
+      width: auto;
+      min-width: 0;
+      height: 1em;
+      overflow: hidden;
+      white-space: pre;
     }
   </style>
 </head>
@@ -633,10 +663,48 @@ Returns the number of clients closed."
     const ime = document.getElementById('ime-sink');
     let composing = false;
 
-    ime.addEventListener('compositionstart', () => { composing = true; });
-    ime.addEventListener('compositionupdate', () => { /* preedit: OS popup handles it */ });
+    // caretPx: translate terminal cursor cell coords to client-space pixels.
+    // DOM equivalent of ImmSetCompositionWindow(CFS_POINT, x, y) — moves the
+    // IME textarea to caret position so the OS native popup anchors there.
+    // Uses ghostty-web renderer metrics (getMetrics) + buffer cursor position.
+    // Falls back to null if the API is not yet available (safe: caller skips).
+    function caretPx() {
+      try {
+        const m = term.renderer && term.renderer.getMetrics && term.renderer.getMetrics();
+        const buf = term.buffer && term.buffer.active;
+        if (!m || !buf) return null;
+        const rect = container.getBoundingClientRect();
+        return {
+          x: rect.left + buf.cursorX * (m.width || 8),
+          y: rect.top  + buf.cursorY * (m.height || 18),
+        };
+      } catch (_) { return null; }
+    }
+
+    ime.addEventListener('compositionstart', () => {
+      composing = true;
+      const p = caretPx();
+      if (p) {
+        ime.style.left = p.x + 'px';
+        ime.style.top  = p.y + 'px';
+      }
+      ime.classList.add('composing');
+    });
+    // compositionupdate: re-anchor textarea every preedit tick to handle
+    // layout desync (Hecker trap #2). cursorX/Y may shift if the preedit
+    // string itself moves the logical cursor position.
+    ime.addEventListener('compositionupdate', () => {
+      const p = caretPx();
+      if (p) {
+        ime.style.left = p.x + 'px';
+        ime.style.top  = p.y + 'px';
+      }
+    });
     ime.addEventListener('compositionend', (e) => {
       composing = false;
+      ime.classList.remove('composing');
+      ime.style.left = '0px';
+      ime.style.top  = '0px';
       const s = e.data || '';
       if (s && ws && ws.readyState === WebSocket.OPEN) {
         ws.send(s.replace(/\\r/g, '\\n'));
