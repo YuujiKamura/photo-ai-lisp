@@ -76,12 +76,12 @@
     z-index: 20;
   }
   #chat-input {
-    flex: 1; min-height: 28px; max-height: 6em;
+    flex: 1; min-height: 2.8em; max-height: 6em;
     font: 13px/1.4 'Cascadia Mono', 'Consolas', monospace;
     background: #0f0f14; color: #e5e5e5;
     border: 1px solid #2a2a33; border-radius: 6px;
     padding: 6px 10px; resize: none; outline: none;
-    overflow-y: auto;
+    overflow: hidden;
   }
   #chat-input:focus { border-color: #7aa2f7; }
   #chat-input.ok  { border-color: #73daca; }
@@ -160,7 +160,7 @@
 </section>
 
 <div id="chat-bar">
-  <textarea id="chat-input" rows="1"
+  <textarea id="chat-input" rows="2"
             placeholder="Enter で送信 · Ctrl+Enter で改行"></textarea>
   <button id="chat-send" type="button">Send</button>
 </div>
