@@ -8,8 +8,9 @@
 ;;; in behaviour.
 ;;;
 ;;; This file DOES NOT replace the terminal (/shell owned by
-;;; src/term.lisp). Business UI embeds /shell?case=<path> via
-;;; iframe in the case view; it never re-implements the byte pipe.
+;;; src/term.lisp). Business UI embeds *ghostty-web-url* (default
+;;; /shell) + ?case=<path> via iframe in the case view; it never
+;;; re-implements the byte pipe.
 
 ;; ---- config --------------------------------------------------------------
 
@@ -20,12 +21,15 @@
    treated as one case. Configurable; tests rebind to a temp dir.")
 
 (defvar *ghostty-web-url* (or (uiop:getenv "GHOSTTY_WEB_URL") "/shell")
-  "URL for the terminal iframe. Defaults to '/shell' — this server's own
-   page, which renders via the ghostty-web WASM bundle vendored under
-   static/vendor/ and connects back to /ws/shell (Lisp-owned PTY). Keeps
-   the whole terminal story in one Lisp process: /api/inject, the agent
-   picker auto-inject, and Swank hot-reload all reach the same PTY.
-   Set GHOSTTY_WEB_URL to override with an external daemon if needed.")
+  "Base URL for the terminal iframe — used verbatim as the iframe src,
+   with `?case=<url-encoded-path>` appended by case-view-handler. Treat
+   this as a full endpoint, NOT a prefix: the template does not inject
+   an extra '/shell' path segment. Defaults to '/shell' (this server's
+   own page backed by ghostty-web WASM in static/vendor/, connecting
+   back to /ws/shell, i.e. the Lisp-owned PTY). Keeps the whole terminal
+   story in one Lisp process: /api/inject, the agent picker auto-inject,
+   and Swank hot-reload all reach the same PTY. Set GHOSTTY_WEB_URL to
+   override with an external daemon, e.g. 'http://host:9000/term'.")
 
 ;; ---- case scan + id ------------------------------------------------------
 
@@ -100,9 +104,11 @@
 
 (defun case-view-handler (id)
   "HTTP handler body for GET /cases/:id. Returns an HTML string
-   with a left meta pane and a right <iframe> embedding
-   /shell?case=<url-encoded-path>. For unknown ID, returns an
-   error HTML body (status set by the easy-handler wrapper)."
+   with a left meta pane and a right <iframe> whose src is
+   `<*ghostty-web-url*>?case=<url-encoded-path>` — the base URL is
+   used verbatim (default '/shell'; no extra path segment added).
+   For unknown ID, returns an error HTML body (status set by the
+   easy-handler wrapper)."
   (let ((c (case-from-id id)))
     (if (null c)
         (format nil "<!DOCTYPE html>
@@ -137,7 +143,7 @@ masters:   ~a</pre>
       </form>
     </div>
     <div class=\"term\">
-      <iframe src=\"~a/shell?case=~a\"></iframe>
+      <iframe src=\"~a?case=~a\"></iframe>
     </div>
   </div>
 </body></html>"
