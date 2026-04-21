@@ -548,67 +548,11 @@ Returns the number of clients closed."
       image-rendering: crisp-edges;
       transform: translateZ(0);
     }
-    /* IME sink: transparent overlay textarea that captures CJK composition
-       events. It sits above the canvas (z-index) so that when focused it
-       receives compositionstart/end from the OS IME. Opacity 0 + no caret
-       keeps it invisible while the OS-native IME popup is still positioned
-       relative to it (browsers respect the element bounding box for IME
-       popup placement even when opacity is 0). pointer-events:none on the
-       textarea itself prevents it from eating mouse clicks meant for the
-       canvas — focus is set programmatically on pointerdown. */
-    #ime-sink {
-      position: fixed;
-      left: 0;
-      top: 0;
-      opacity: 0;
-      background: transparent;
-      border: none;
-      outline: none;
-      resize: none;
-      padding: 0;
-      margin: 0;
-      z-index: 10;
-      caret-color: transparent;
-      pointer-events: none;
-      font-size: 14px;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-    }
-    /* composing: make visible at caret position so OS native IME popup
-       anchors at the right spot and preedit text (underlined hiragana) is
-       rendered by the browser's native IME path inside the textarea.
-       Matches the Hecker WT/TSF pattern: we can't hook TSF directly in DOM,
-       so we move the textarea to caret pixel coords and let the native IME
-       draw into it — same effect as ImmSetCompositionWindow(CFS_POINT).
-       background:transparent + canvas-matched color avoids layout desync
-       visual artifacts (composition text sits on top of canvas, disappears
-       on compositionend — short-lived so tolerable). */
-    #ime-sink.composing {
-      opacity: 1;
-      color: var(--fg, #d4d4d4);
-      background: transparent;
-      caret-color: var(--fg, #d4d4d4);
-      font-family: 'Cascadia Mono', 'Cascadia Code', 'Meiryo UI', Consolas, monospace;
-      font-size: 14px;
-      line-height: 1;
-      padding: 0;
-      border: none;
-      pointer-events: auto;
-      width: auto;
-      min-width: 0;
-      height: 1em;
-      overflow: hidden;
-      white-space: pre;
-    }
   </style>
 </head>
 <body>
   <div id=\"shell-root\">
     <div id=\"terminal\"></div>
-    <textarea id=\"ime-sink\" aria-hidden=\"true\" autocorrect=\"off\"
-              autocapitalize=\"off\" spellcheck=\"false\"
-              tabindex=\"-1\"></textarea>
   </div>
   <script type=\"module\">
     // Renderer: ghostty-web WASM bundle served from /vendor/ by the Lisp hub.
@@ -645,103 +589,64 @@ Returns the number of clients closed."
     fitAddon.fit();
     fitAddon.observeResize();
 
-    // --- IME overlay textarea (issue #36) ---
-    // ghostty-web's hidden textarea has clip-path:inset(50%) which hides
-    // the element entirely including the caret anchor; some OS IME
-    // implementations position the candidate popup relative to the focused
-    // element's bounding rect and end up placing it off-screen (or simply
-    // not attaching because the rect is empty).  We add a second, full-size
-    // overlay textarea that the IME can use as its anchor.  It is transparent
-    // and non-interactive for mouse events, so the canvas still receives
-    // pointer events and ghost-web's own input path keeps working for ASCII.
+    // --- IME reposition (issue #36, v2) ---
+    // ghostty-web already owns an internal textarea (terminal.ts:49,
+    // public textarea?: HTMLTextAreaElement) and wires compositionend →
+    // onDataCallback (input-handler.ts:684-699).  The custom #ime-sink
+    // overlay (41becbc) competed with that textarea for focus.
     //
-    // Dual-path guarantee:
-    //   IME path:   compositionend on ime-sink → ws.send(e.data)
-    //   ASCII path: term.onData               → ws.send(data)  [unchanged]
-    // There is no double-send risk: compositionend does not re-fire on
-    // term.onData because ghostty-web guards keydown with isComposing.
-    const ime = document.getElementById('ime-sink');
-    let composing = false;
-
-    // caretPx: translate terminal cursor cell coords to client-space pixels.
-    // DOM equivalent of ImmSetCompositionWindow(CFS_POINT, x, y) — moves the
-    // IME textarea to caret position so the OS native popup anchors there.
-    // Uses ghostty-web renderer metrics (getMetrics) + buffer cursor position.
-    // Falls back to null if the API is not yet available (safe: caller skips).
-    function caretPx() {
+    // Root cause of window-bottom popup: Chrome/TSF sees a 1×1 px element
+    // and falls back to placing the candidate popup at the window bottom.
+    // Fix: during composition, reposition term.textarea to caret pixel
+    // coords and expand it to one cell (renderer.getMetrics()) so TSF
+    // recognises it as a valid text insertion point.  Non-composition: reset
+    // to the ghostty-web default (1×1 top-left) so it stays invisible.
+    //
+    // term.onData path (ASCII + confirmed CJK via compositionend) is
+    // untouched — ws.send is still wired there and delivers input normally.
+    function updateImePos() {
       try {
-        const m = term.renderer && term.renderer.getMetrics && term.renderer.getMetrics();
-        const buf = term.buffer && term.buffer.active;
-        if (!m || !buf) return null;
+        if (!term.textarea || !term.renderer || !term.buffer || !term.buffer.active) return;
+        const m = term.renderer.getMetrics && term.renderer.getMetrics();
+        if (!m || !m.width || !m.height) return;
         const rect = container.getBoundingClientRect();
-        return {
-          x: rect.left + buf.cursorX * (m.width || 8),
-          y: rect.top  + buf.cursorY * (m.height || 18),
-        };
-      } catch (_) { return null; }
+        const x = rect.left + term.buffer.active.cursorX * m.width;
+        const y = rect.top  + term.buffer.active.cursorY * m.height;
+        term.textarea.style.left   = x + 'px';
+        term.textarea.style.top    = y + 'px';
+        term.textarea.style.width  = m.width  + 'px';
+        term.textarea.style.height = m.height + 'px';
+      } catch (_) {}
+    }
+    function resetImePos() {
+      try {
+        if (!term.textarea) return;
+        term.textarea.style.left   = '0px';
+        term.textarea.style.top    = '0px';
+        term.textarea.style.width  = '1px';
+        term.textarea.style.height = '1px';
+      } catch (_) {}
+    }
+    if (term.textarea) {
+      term.textarea.addEventListener('compositionstart',  updateImePos);
+      term.textarea.addEventListener('compositionupdate', updateImePos);
+      term.textarea.addEventListener('compositionend',    resetImePos);
+      // Re-anchor after cursor movement so a subsequent composition starts
+      // at the updated caret position.
+      term.textarea.addEventListener('keyup', () => requestAnimationFrame(updateImePos));
     }
 
-    ime.addEventListener('compositionstart', () => {
-      composing = true;
-      const p = caretPx();
-      if (p) {
-        ime.style.left = p.x + 'px';
-        ime.style.top  = p.y + 'px';
-      }
-      ime.classList.add('composing');
-    });
-    // compositionupdate: re-anchor textarea every preedit tick to handle
-    // layout desync (Hecker trap #2). cursorX/Y may shift if the preedit
-    // string itself moves the logical cursor position.
-    ime.addEventListener('compositionupdate', () => {
-      const p = caretPx();
-      if (p) {
-        ime.style.left = p.x + 'px';
-        ime.style.top  = p.y + 'px';
-      }
-    });
-    ime.addEventListener('compositionend', (e) => {
-      composing = false;
-      ime.classList.remove('composing');
-      ime.style.left = '0px';
-      ime.style.top  = '0px';
-      const s = e.data || '';
-      if (s && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(s.replace(/\\r/g, '\\n'));
-      }
-      ime.value = '';
-    });
-    // Direct (non-IME) input that lands on ime-sink when it has focus
-    // (e.g. ASCII keys on some mobile keyboards that route through beforeinput
-    // rather than keydown): forward to WS and clear value to prevent
-    // accumulation.  Guard on !isComposing to avoid double-send with the
-    // compositionend handler above.
-    ime.addEventListener('input', (e) => {
-      if (e.isComposing || composing) return;
-      const t = ime.value;
-      if (t && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(t.replace(/\\r/g, '\\n'));
-      }
-      ime.value = '';
-    });
-
-    // On any pointer-down in the terminal area: give focus to the ime-sink
-    // textarea (so IME attaches to it) and also call term.focus() so
-    // ghostty-web's ASCII keydown path remains active via the container.
-    // The textarea has pointer-events:none so this listener must be on the
-    // shell-root wrapper, not on the textarea itself.
+    // On any pointer-down: delegate focus to ghostty-web's own textarea
+    // (term.focus() does this internally) so the IME attaches to it.
     document.getElementById('shell-root').addEventListener('pointerdown', () => {
-      term.focus();          // ghostty-web keeps ASCII input working
-      ime.focus();           // IME now anchors to the full-size overlay
+      term.focus();
     });
     window.addEventListener('focus', () => {
       term.focus();
-      ime.focus();
     });
 
     // Initial focus
     term.focus();
-    ime.focus();
 
     let ws = null, reconnectDelay = 500;
     function connect() {
