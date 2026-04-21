@@ -127,5 +127,17 @@
 
 (defun stop ()
   (when *acceptor*
+    ;; Step 1: close every /ws/shell client and kill child processes FIRST.
+    ;; On Windows the AFD layer holds sockets in CLOSE_WAIT until the server
+    ;; explicitly closes its side. Without this, 40+ CLOSE_WAIT sockets
+    ;; accumulate under Chrome's auto-reconnect loop and block rebind on the
+    ;; same port. See GitHub issue #31.
+    (let ((n (ignore-errors (close-shell-clients))))
+      (when (and n (plusp n))
+        ;; Give Chrome time to acknowledge the WS close frame so the TCP
+        ;; handshake completes. 200ms is sufficient on localhost; the sockets
+        ;; have already received FIN from the close call above regardless.
+        (sleep 0.2)))
+    ;; Step 2: stop the acceptor (closes the listen socket).
     (hunchentoot:stop *acceptor*)
     (setf *acceptor* nil)))

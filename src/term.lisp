@@ -361,6 +361,46 @@
       (kill-child child)
       (setf (shell-client-child client) nil))))
 
+;;; Server-initiated orderly teardown of every active /ws/shell connection.
+;;; Call this BEFORE hunchentoot:stop to drain CLOSE_WAIT sockets on Windows.
+;;;
+;;; Why: on Windows the AFD/afd.sys driver holds a TCP socket in CLOSE_WAIT
+;;; until the server explicitly closes its side. hunchentoot:stop merely stops
+;;; accepting new connections; it does NOT close already-accepted streaming
+;;; sockets that are being handled by per-connection threads. Chrome's
+;;; auto-reconnect loop after a hub kill leaves 40+ CLOSE_WAIT sockets that
+;;; prevent rebind on the same port for minutes.
+;;;
+;;; Fix: before stopping the acceptor we walk *shell-clients*, kill each
+;;; child process (so no new output arrives), send a WS close frame
+;;; (opcode 0x8, status 1001 "going away"), and then force-close the
+;;; underlying Lisp stream. The force-close triggers the OS to send FIN/RST,
+;;; immediately transitioning the Windows socket out of CLOSE_WAIT.
+(defun close-shell-clients ()
+  "Forcibly close every active /ws/shell client and its child process.
+Sends a WebSocket 1001 close frame then closes the TCP stream so Windows
+does not leave the socket in CLOSE_WAIT after the acceptor stops.
+Returns the number of clients closed."
+  (let ((snapshot (bordeaux-threads:with-lock-held (*shell-clients-lock*)
+                    (prog1 (copy-list *shell-clients*)
+                      (setf *shell-clients* '())))))
+    (dolist (client snapshot)
+      ;; 1. Kill the child process first so the stdout pump thread exits
+      ;;    and stops writing to the WS after we close it.
+      (let ((child (shell-client-child client)))
+        (when child
+          (ignore-errors (kill-child child))
+          (setf (shell-client-child client) nil)))
+      ;; 2. Send WS close frame (1001 = going away) so Chrome transitions
+      ;;    its side to CLOSE_WAIT instead of keeping the connection open.
+      (ignore-errors
+        (hunchensocket:close-connection client :status 1001 :reason "server shutdown"))
+      ;; 3. Force-close the underlying stream. This is what actually tells
+      ;;    the Windows TCP stack to send FIN and release the socket fd.
+      (ignore-errors
+        (close (slot-value client 'hunchensocket::output-stream) :abort t)))
+    (length snapshot)))
+
 ;;; 2b — text message received: write to child stdin.
 ;;; hunchensocket hands us the already-UTF-8-decoded string. If the frame
 ;;; contained bytes that can't round-trip through latin-1 (what the child
