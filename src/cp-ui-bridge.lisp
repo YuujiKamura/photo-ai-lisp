@@ -42,3 +42,25 @@
         (format nil "{\"ok\":true,\"session\":\"~a\",\"bytes\":~d}"
                 (%json-escape *demo-session-id*)
                 n-bytes))))
+
+;;; T2.c — parse-demo-session-name
+;;; Pure function: given the stdout string from `deckpilot launch`, extract
+;;; the session name (last non-empty line).  Returns nil on bad input so
+;;; callers can decide how to fail rather than propagating an error.
+
+(defun parse-demo-session-name (s)
+  "Extract the session name from DECKPILOT LAUNCH stdout string S.
+
+   Strategy:
+     1. Split S on newlines.
+     2. Take the last non-empty (after trim) token.
+     3. If that token starts with \"ghostty-\" return it, else return NIL.
+   NIL is also returned for NIL input or blank strings."
+  (when (and s (plusp (length s)))
+    (let* ((lines  (uiop:split-string s :separator '(#\Newline #\Return)))
+           (trimmed (remove-if (lambda (l) (zerop (length (string-trim " " l)))) lines))
+           (last-line (and trimmed (string-trim " " (car (last trimmed))))))
+      (when (and last-line
+                 (> (length last-line) 8)
+                 (string= "ghostty-" (subseq last-line 0 8)))
+        last-line))))

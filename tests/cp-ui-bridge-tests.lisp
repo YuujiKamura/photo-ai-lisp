@@ -35,3 +35,27 @@
               "body should echo the session id")
       (5am:is (search "bytes" body)
               "body should contain byte count field"))))
+
+;; ---- T2.c — parse-demo-session-name unit tests ----------------------------
+
+(5am:test boot-hub-parse-demo-session-simple
+  "Single line 'ghostty-12345\\n' -> 'ghostty-12345'."
+  (5am:is (equal "ghostty-12345"
+                 (photo-ai-lisp:parse-demo-session-name
+                  (format nil "ghostty-12345~%")))
+          "simple ghostty session name must be returned verbatim"))
+
+(5am:test boot-hub-parse-demo-session-multiline
+  "Noise lines before the session name: last non-empty line wins."
+  (5am:is (equal "ghostty-67890"
+                 (photo-ai-lisp:parse-demo-session-name
+                  (format nil "some noise~%ghostty-67890~%")))
+          "last non-empty line should be returned even when prefix noise is present"))
+
+(5am:test boot-hub-parse-demo-session-bad-input
+  "Empty string and non-ghostty- prefix → nil."
+  (5am:is (null (photo-ai-lisp:parse-demo-session-name ""))
+          "empty string must return nil")
+  (5am:is (null (photo-ai-lisp:parse-demo-session-name
+                 (format nil "notasession~%")))
+          "line not starting with ghostty- must return nil"))

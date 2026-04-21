@@ -40,7 +40,23 @@ of relying on the CLI default.
 
 ## Wiring into `scripts/boot-hub.lisp`
 
-On startup, `scripts/boot-hub.lisp` asks deckpilot to spawn exactly one
-ghostty-win session whose child process is `claude --model sonnet`, then
-stores the returned session id in `*demo-session-id*` for
-`pipeline-cp:send-input` to target.
+Pass `--demo` to enter demo mode:
+
+```
+sbcl --script scripts/boot-hub.lisp --demo
+```
+
+On startup the script calls `spawn-demo-agent`, which runs:
+
+```
+deckpilot launch sonnet "hub ready, awaiting first input" --cwd <repo-root>
+```
+
+deckpilot expands `sonnet` to `claude --dangerously-skip-permissions --model sonnet`,
+creates a ghostty-win session, and returns the session name (e.g. `ghostty-12345`)
+on stdout.  `parse-demo-session-name` extracts the last non-empty line and sets
+`photo-ai-lisp:*demo-session-id*`, which `input-bridge-handler` (T2.b) targets
+for subsequent CP INPUT frames.
+
+Without `--demo` the script runs the T1.c smoke (connect → LIST → disconnect →
+exit 0), which CI depends on and must not be broken.

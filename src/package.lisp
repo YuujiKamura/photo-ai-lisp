@@ -66,4 +66,6 @@
            ;; issue #19 — T2.b: CP UI bridge
            #:*demo-session-id*
            #:*demo-cp-client*
-           #:input-bridge-handler))
+           #:input-bridge-handler
+           ;; issue #19 — T2.c: demo session spawn utility
+           #:parse-demo-session-name))

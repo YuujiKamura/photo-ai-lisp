@@ -656,7 +656,7 @@ of scope.
             *demo-session-id* nil guard returns 503; :mock-client fallback for
             offline tests; 2 new FiveAM specs (nil-session + with-session).
 
-- [ ] **T2.c** fixed single-agent session selection
+- [x] **T2.c** fixed single-agent session selection
       Implements: `scripts/boot-hub.lisp` (spawn one claude session via
                   deckpilot on boot, store id in `*demo-session-id*`),
                   `docs/tier-2/agent-choice.md`
@@ -665,6 +665,10 @@ of scope.
            `*demo-session-id*` resolvable from Lisp REPL; rationale for
            picking `claude -p` (vs gemini / codex) documented.
       Est: 1-2h · Agent hint: Main Claude
+      Done: 2026-04-21 — boot-hub.lisp --demo mode: start :8090 + spawn-demo-agent
+            via deckpilot launch sonnet; parse-demo-session-name pure fn in
+            cp-ui-bridge.lisp (exported); 3 FiveAM tests (simple/multiline/bad).
+            T1.c smoke (no-args) preserved intact.
 
 - [ ] **T2.d** end-to-end round-trip reflected in iframe
       Implements: manual test script `scripts/t2-e2e.lisp` (+ log)
