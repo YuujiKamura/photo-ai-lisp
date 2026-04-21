@@ -27,21 +27,50 @@
    ID  — case id string from the URL (informational; not used for routing).
    CMD — command text from the 'cmd' form field.
 
-   Returns a JSON string as the response body.  Callers must set the HTTP
-   status code themselves:
-     503 when *demo-session-id* is nil
-     200 otherwise (even if the CP returns a mock response)"
+   Returns a JSON string as the response body.  The HTTP status code is
+   set by the dispatcher wrapper in src/main.lisp based on whether the
+   body contains the \"error\" key.
+
+   T2.h pivot — three execution modes:
+
+     1. Demo mode (PHOTO_AI_LISP_DEMO_AGENT env var set): broadcast CMD
+        directly to every connected /ws/shell child via
+        shell-broadcast-input. The iframe-visible child IS the agent,
+        so INPUT lands in its stdin and its output streams back over
+        the same WebSocket. When no /ws/shell is connected (recipients
+        = 0), return an error body so the dispatcher can 503.
+
+     2. Legacy CP mode with *demo-session-id* set: preserved path
+        through send-cp-command (uses :mock-client when no live CP
+        client is wired). Not used by the current pivoted demo but
+        kept so downstream callers that poke *demo-session-id*
+        directly keep working.
+
+     3. Legacy CP mode with *demo-session-id* nil: error body."
   (declare (ignore id))
-  (if (null *demo-session-id*)
-      "{\"error\":\"no demo session configured yet\"}"
-      (let* ((client  (%cp-client-or-mock))
-             (frame   (make-cp-input cmd :session-id *demo-session-id*))
-             (resp    (send-cp-command client frame))
-             (n-bytes (length frame)))
-        (declare (ignore resp))
-        (format nil "{\"ok\":true,\"session\":\"~a\",\"bytes\":~d}"
-                (%json-escape *demo-session-id*)
-                n-bytes))))
+  (let ((agent (uiop:getenv "PHOTO_AI_LISP_DEMO_AGENT")))
+    (cond
+      ;; Mode 1 — demo mode: shell-broadcast to /ws/shell children.
+      ((and agent (plusp (length agent)))
+       (let* ((text       (format nil "~A~%" cmd))
+              (recipients (shell-broadcast-input text)))
+         (if (zerop recipients)
+             "{\"error\":\"no /ws/shell client connected; open the iframe first\"}"
+             (format nil "{\"ok\":true,\"mode\":\"shell-broadcast\",\"session\":\"demo\",\"recipients\":~d,\"bytes\":~d}"
+                     recipients (length text)))))
+      ;; Mode 3 — legacy CP, no session configured.
+      ((null *demo-session-id*)
+       "{\"error\":\"no demo session configured yet\"}")
+      ;; Mode 2 — legacy CP path (kept for backwards compat).
+      (t
+       (let* ((client  (%cp-client-or-mock))
+              (frame   (make-cp-input cmd :session-id *demo-session-id*))
+              (resp    (send-cp-command client frame))
+              (n-bytes (length frame)))
+         (declare (ignore resp))
+         (format nil "{\"ok\":true,\"session\":\"~a\",\"bytes\":~d}"
+                 (%json-escape *demo-session-id*)
+                 n-bytes))))))
 
 ;;; T2.c — parse-demo-session-name
 ;;; Pure function: given the stdout string from `deckpilot launch`, extract

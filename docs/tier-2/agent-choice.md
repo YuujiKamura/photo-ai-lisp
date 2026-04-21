@@ -38,25 +38,40 @@ deckpilot creates on boot. `scripts/pick-agent.cmd` (option 1 = `claude`)
 confirms the same binary; Tier 2 pins the model to Sonnet explicitly instead
 of relying on the CLI default.
 
-## Wiring into `scripts/boot-hub.lisp`
+## Wiring into `scripts/boot-hub.lisp` (T2.h pivot)
 
-Pass `--demo` to enter demo mode:
+**Change 2026-04-21:** The demo used to spawn a deckpilot ghostty-win
+session and try to route CP INPUT frames back to it. That never actually
+round-tripped (see "Tier 2 Known Gap" in BACKLOG.md — `*demo-cp-client*`
+stayed nil, `/ws/shell` was a different shell than the deckpilot one,
+and INPUT always hit the `:mock-client` path). T2.h replaces that model
+with a direct spawn: the iframe's `/ws/shell` child *is* the agent.
+
+Set the agent command once in the environment, then launch the hub in
+demo mode:
 
 ```
+set PHOTO_AI_LISP_DEMO_AGENT=claude --dangerously-skip-permissions --model sonnet
 sbcl --script scripts/boot-hub.lisp --demo
 ```
 
-On startup the script calls `spawn-demo-agent`, which runs:
+On `/ws/shell` client-connect, `%demo-agent-argv` (in `src/term.lisp`)
+reads that env var, splits it on spaces, and spawns the command as the
+WebSocket's child process. The picker auto-inject (`pick-agent.cmd`) is
+skipped because the child *is* the agent. `input-bridge-handler` (T2.b)
+detects the same env var and, instead of sending CP frames, calls
+`shell-broadcast-input` to write the command into every connected
+`/ws/shell` child's stdin — which is the same child the iframe is
+rendering. One flow, one child.
 
-```
-deckpilot launch sonnet "hub ready, awaiting first input" --cwd <repo-root>
-```
+If `PHOTO_AI_LISP_DEMO_AGENT` is unset, the iframe shows the pick-agent
+menu as before and the INPUT button falls through to the legacy CP path
+(mostly useful for testing the non-demo codepath).
 
-deckpilot expands `sonnet` to `claude --dangerously-skip-permissions --model sonnet`,
-creates a ghostty-win session, and returns the session name (e.g. `ghostty-12345`)
-on stdout.  `parse-demo-session-name` extracts the last non-empty line and sets
-`photo-ai-lisp:*demo-session-id*`, which `input-bridge-handler` (T2.b) targets
-for subsequent CP INPUT frames.
+`spawn-demo-agent` and `parse-demo-session-name` in `scripts/boot-hub.lisp`
+and `src/cp-ui-bridge.lisp` are kept as callable legacy helpers (dead
+code in the current boot path; removed from `run-demo`) so downstream
+scripts that import them keep loading.
 
-Without `--demo` the script runs the T1.c smoke (connect → LIST → disconnect →
-exit 0), which CI depends on and must not be broken.
+Without `--demo` the script runs the T1.c smoke (connect → LIST →
+disconnect → exit 0), which CI depends on and must not be broken.

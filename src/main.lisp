@@ -64,7 +64,11 @@
                (cmd (or (hunchentoot:post-parameter "cmd") "")))
           (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
           (let ((body (input-bridge-handler id cmd)))
-            (when (null *demo-session-id*)
+            ;; T2.h pivot: demo mode and legacy CP mode both route through
+            ;; input-bridge-handler now. An "error" substring in the body
+            ;; is the single signal that the send could not be delivered
+            ;; (legacy: *demo-session-id* nil; demo: no /ws/shell open).
+            (when (search "\"error\"" body)
               (setf (hunchentoot:return-code*) 503))
             body))
         ;; GET /cases/<id>

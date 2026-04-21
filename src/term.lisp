@@ -192,16 +192,48 @@
                                   (getf e :bytes)
                                   (%json-escape (getf e :preview)))))))
 
+(defun %demo-agent-argv ()
+  "When PHOTO_AI_LISP_DEMO_AGENT is set in the environment, return it
+   as a parsed argv list so /ws/shell spawns that command directly as
+   the demo child (no pick-agent picker menu, no deckpilot hop).
+   Returns NIL when the var is unset or empty.
+
+   T2.h pivot: the Tier-2 demo round-trip runs entirely inside the
+   Lisp-owned /ws/shell child instead of a separate ghostty-win + CP
+   hop, so the iframe-visible child *is* the INPUT recipient.
+
+   Space-split is intentionally naive — it covers the documented
+   command shape (`claude --dangerously-skip-permissions --model sonnet`)
+   and similar plain flag lists. Callers that need quoting / embedded
+   spaces must expand this."
+  (let ((raw (uiop:getenv "PHOTO_AI_LISP_DEMO_AGENT")))
+    (when (and raw (plusp (length raw)))
+      (loop with start = 0 with tokens = nil
+            for i below (length raw)
+            when (char= (char raw i) #\Space)
+              do (when (< start i)
+                   (push (subseq raw start i) tokens))
+                 (setf start (1+ i))
+            finally (when (< start (length raw))
+                      (push (subseq raw start (length raw)) tokens))
+                    (return (nreverse tokens))))))
+
 (defun %shell-argv ()
-  ;; On Windows, route through %default-argv so cmd.exe runs under the
-  ;; conpty-bridge (real ConPTY). Without the bridge, cmd sees piped
-  ;; stdin and LF is the only line terminator it honors — contradicting
-  ;; %normalize-child-input's LF->CR rewrite and breaking pick-agent.cmd
-  ;; auto-inject. %default-argv falls back to bare cmd.exe if the bridge
-  ;; binary is missing.
-  (if (uiop:os-windows-p)
-      (%default-argv)
-      (list "/bin/bash" "--norc" "--noprofile")))
+  ;; T2.h pivot: when PHOTO_AI_LISP_DEMO_AGENT is set, spawn that command
+  ;; directly instead of the platform shell. The picker auto-inject
+  ;; (%auto-pick-agent) is also skipped in client-connected when this
+  ;; argv overrides kicks in, so the demo child is the agent, not cmd.
+  ;;
+  ;; On Windows (no demo override), route through %default-argv so
+  ;; cmd.exe runs under the conpty-bridge (real ConPTY). Without the
+  ;; bridge, cmd sees piped stdin and LF is the only line terminator
+  ;; it honors — contradicting %normalize-child-input's LF->CR rewrite
+  ;; and breaking pick-agent.cmd auto-inject. %default-argv falls back
+  ;; to bare cmd.exe if the bridge binary is missing.
+  (or (%demo-agent-argv)
+      (if (uiop:os-windows-p)
+          (%default-argv)
+          (list "/bin/bash" "--norc" "--noprofile"))))
 
 (defun %scrub-for-utf8 (s)
   "Collapse anything hunchensocket's UTF-8 text-frame encoder cannot
@@ -282,7 +314,9 @@
                :name "shell-stdout-pump"))
         (%register-shell-client client)
         ;; Auto-inject the agent picker after the shell banner settles.
-        (when *auto-pick-agent*
+        ;; T2.h pivot: when the demo agent argv override is active, the
+        ;; child IS the agent — don't inject a picker into claude's stdin.
+        (when (and *auto-pick-agent* (not (%demo-agent-argv)))
           (bordeaux-threads:make-thread
            (lambda ()
              (sleep 0.4)

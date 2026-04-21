@@ -16,8 +16,8 @@
                              (:file "live-repl")
                              (:file "cp-protocol")
                              (:file "cp-client")
-                             (:file "cp-ui-bridge")
                              (:file "term")
+                             (:file "cp-ui-bridge")
                              (:file "control")
                              (:file "main")))))
 

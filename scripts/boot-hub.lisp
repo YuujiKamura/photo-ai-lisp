@@ -1,11 +1,14 @@
 ;;;; scripts/boot-hub.lisp
 ;;;; T1.c — boot-hub smoke: connect, LIST, disconnect, exit 0.
-;;;; T2.c — boot-hub demo mode: start hub + spawn one sonnet session
-;;;;         via deckpilot, then loop forever.
+;;;; T2.h — demo mode: start hub on :8090 and loop; the iframe's
+;;;;         /ws/shell child runs PHOTO_AI_LISP_DEMO_AGENT directly,
+;;;;         and the INPUT button shell-broadcasts into that child.
+;;;;         No deckpilot spawn, no CP hop.
 ;;;;
 ;;;; Usage:
 ;;;;   sbcl --script scripts/boot-hub.lisp            ; T1.c smoke (CI)
-;;;;   sbcl --script scripts/boot-hub.lisp --demo     ; T2.c demo mode
+;;;;   PHOTO_AI_LISP_DEMO_AGENT="claude --model sonnet" \
+;;;;     sbcl --script scripts/boot-hub.lisp --demo   ; T2.h demo mode
 ;;;;
 ;;;; Exit 0 on success, 1 on any error.
 
@@ -107,6 +110,14 @@
 ;;; ---- T2.c demo mode (--demo flag) -----------------------------------------
 
 (defun run-demo ()
+  "T2.h pivot: the demo no longer spawns a deckpilot ghostty-win session.
+   Instead, the iframe's /ws/shell connection spawns PHOTO_AI_LISP_DEMO_AGENT
+   directly as its child (see %demo-agent-argv in src/term.lisp), and the
+   INPUT button shell-broadcasts into that same child. No CP hop.
+
+   spawn-demo-agent / parse-demo-session-name are intentionally left
+   callable so any downstream script that imports them still loads,
+   but this script no longer invokes them."
   (handler-case
       (progn
         ;; photo-ai-lisp already loaded at top; re-quickload is a no-op but kept
@@ -114,9 +125,12 @@
         (ql:quickload :photo-ai-lisp :silent t)
         (start :port 8090)
         (format t "[HUB] started on :8090~%")
-        (spawn-demo-agent :cwd (namestring *repo-root*))
-        (format t "[DEMO] session=~A~%" *demo-session-id*)
-        ;; Keep image alive so REPL (e.g. swank/sly) can inspect the var.
+        (let ((agent (uiop:getenv "PHOTO_AI_LISP_DEMO_AGENT")))
+          (if (and agent (plusp (length agent)))
+              (format t "[DEMO] iframe /ws/shell will spawn: ~A~%" agent)
+              (format t "[DEMO] PHOTO_AI_LISP_DEMO_AGENT not set; iframe will show pick-agent menu~%")))
+        (format t "[DEMO] open http://localhost:8090/cases/demo and click the INPUT button~%")
+        ;; Keep image alive so REPL (e.g. swank/sly) can inspect state.
         (loop (sleep 60)))
     (error (c)
       (format *error-output* "[DEMO] FATAL: ~A~%" c)

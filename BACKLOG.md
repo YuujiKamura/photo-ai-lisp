@@ -669,6 +669,12 @@ of scope.
             via deckpilot launch sonnet; parse-demo-session-name pure fn in
             cp-ui-bridge.lisp (exported); 3 FiveAM tests (simple/multiline/bad).
             T1.c smoke (no-args) preserved intact.
+      **T2.h pivot note (2026-04-21):** `spawn-demo-agent` and
+      `parse-demo-session-name` are now legacy — `run-demo` no longer
+      calls them. Kept as callable functions + unit tests (dead code)
+      for backwards compatibility with any downstream script that
+      imports them. Live round-trip is done via shell-broadcast to
+      the iframe's /ws/shell child instead. See T2.h below.
 
 - [x] **T2.d** end-to-end round-trip reflected in iframe
       Implements: manual test script `scripts/t2-e2e.lisp` (+ log)
@@ -703,44 +709,58 @@ of scope.
 - [ ] **T2.g** Tier-2 demo screenshot + committed log
       Implements: `docs/tier-2/demo.png`, `docs/tier-2/demo.log`,
                   `docs/tier-2/README.md`
-      Deps: T2.d, T2.e · Branch: `feat/t2g-evidence`
+      Deps: T2.d, T2.e, T2.h · Branch: `feat/t2g-evidence`
       DoD: PNG shows business-ui page with iframe populated by agent
            output; log is the matching `docs/tier-2/e2e.log` from T2.d.
       Est: 0.5h · Agent hint: Main Claude
-      **BLOCKED by Tier 2 Known Gap (below) — live agent output path is not
-      wired; faking this screenshot is theater. Resume after gap closed in
-      Tier 3 dogfood or a dedicated T2.h atom.**
+      Re-opened 2026-04-21 after T2.h closed the live round-trip gap via
+      the shell-broadcast pivot. PNG capture now viable because the iframe
+      child IS the agent and the INPUT button writes to the same child's
+      stdin — the agent's reply streams straight back over the existing
+      /ws/shell frame.
 
-### Tier 2 Known Gap — live INPUT → iframe round-trip is NOT wired
+- [x] **T2.h** Tier 2 demo pivot to shell-broadcast model (closes Tier 2 gap)
+      Implements: `src/term.lisp` (`%demo-agent-argv`, `%shell-argv` override,
+                  picker skip), `src/cp-ui-bridge.lisp` (`input-bridge-handler`
+                  demo-mode branch), `src/main.lisp` (body-`"error"` → 503),
+                  `scripts/boot-hub.lisp` (`run-demo` no longer spawns deckpilot),
+                  `docs/tier-2/agent-choice.md`, `tests/cp-ui-bridge-tests.lisp`
+                  (demo-mode zero-recipients test).
+      Deps: T2.c · Branch: `main`
+      DoD: `PHOTO_AI_LISP_DEMO_AGENT=... sbcl --script scripts/boot-hub.lisp --demo`
+           + open `/cases/demo` iframe + POST `/cases/demo/input cmd=...` round-trips
+           through a single /ws/shell child; no deckpilot hop, no
+           `:mock-client` path. Unit tests cover the demo mode zero-recipients
+           503 branch and the legacy-CP branch stays green.
+      Done: 2026-04-21 — CP layer excised from the demo. The iframe child is
+            now the agent; INPUT is shell-broadcast into that same child's
+            stdin; the resulting output streams back on the same /ws/shell
+            frame. `spawn-demo-agent` / `parse-demo-session-name` intentionally
+            remain as legacy dead code so downstream importers don't break.
+
+### Tier 2 Known Gap — CLOSED 2026-04-21 via T2.h
+
+(Historical record, kept for context.)
 
 Discovered 2026-04-21 while staging T2.g: although T2.a/T2.b/T2.c/T2.d all
-landed, the demo cannot actually round-trip a live agent response to the
-iframe. Specifics:
+landed, the demo could not round-trip a live agent response to the iframe.
+Specifically:
 
-1. `src/cp-ui-bridge.lisp` L15 `*demo-cp-client*` is still `nil` — T2.c
-   only set `*demo-session-id*`, never wired the client. So
-   `%cp-client-or-mock` always returns `:mock-client` and
-   `send-cp-command` returns the constant `(list "OK" "MOCK")`.
-2. The deckpilot-spawned `claude --model sonnet` ghostty window has no
-   CP connection back to the Lisp hub; the hub has no way to forward
+1. `src/cp-ui-bridge.lisp` `*demo-cp-client*` stayed `nil` — T2.c only set
+   `*demo-session-id*`, never wired the client. So `%cp-client-or-mock`
+   always returned `:mock-client` and `send-cp-command` returned the
+   constant `(list "OK" "MOCK")`.
+2. The deckpilot-spawned `claude --model sonnet` ghostty window had no
+   CP connection back to the Lisp hub; the hub had no way to forward
    INPUT frames to that session.
-3. The iframe connects to `/ws/shell` which spins up a fresh Lisp-owned
+3. The iframe connected to `/ws/shell` which spins up a fresh Lisp-owned
    shell per client — unrelated to the deckpilot session entirely.
 
-Consequence: clicking the T2.b button returns a mock 200 but the iframe
-never sees agent output. The four "passing" Tier 2 atoms are UI + stub
-only.
-
-What is needed to truly close Tier 2:
-
-- **T2.h (new)** — wire `*demo-cp-client*` at boot-hub `--demo` time,
-  and either (a) make the deckpilot-spawned session run a CP bridge
-  that connects back to the hub with its `ghostty-NNNNN` id, or (b)
-  change the demo model so the iframe and the CP target are the same
-  Lisp-owned shell (no separate ghostty window).
-- Only after (a) or (b) is the T2.g screenshot DoD satisfiable.
-
-Until then Tier 2 is "UI readiness + mock round-trip" only.
+**Resolution:** T2.h took option (b) from the original repair plan — the
+iframe and the INPUT target are the same Lisp-owned `/ws/shell` child,
+with the child being the agent itself (argv driven by
+`PHOTO_AI_LISP_DEMO_AGENT`). The CP layer is no longer on the Tier 2 demo
+path, which sidesteps problem (1)/(2)/(3) entirely.
 
 ### Tier 3 — Dogfood week
 
