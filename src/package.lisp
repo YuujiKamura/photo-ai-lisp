@@ -72,6 +72,9 @@
            #:*demo-session-id*
            #:*demo-cp-client*
            #:input-bridge-handler
+           ;; issue #30 Phase 2 (G2.a) — status broadcast
+           #:broadcast-status
+           #:build-status-envelope
            ;; issue #19 — T2.c: demo session spawn utility
            #:parse-demo-session-name
            ;; issue #29 — C1: usage log auto-write

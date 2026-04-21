@@ -6,6 +6,15 @@
 ;;;
 ;;; The session id is resolved via *demo-session-id*, a defvar that T2.c will
 ;;; populate on boot. Until then the var is nil and all requests return 503.
+;;;
+;;; Issue #30 Phase 2 (G2.a) — STATUS broadcast:
+;;;   Before the legacy CP dispatch ships an INPUT/SHOW/STATE/LIST frame, we
+;;;   broadcast a `status` envelope over /ws/control so every connected UI
+;;;   client can toggle an in-flight indicator.  A matching :idle (or :error)
+;;;   status goes out once the reply arrives (or the request fails).  The
+;;;   envelope reuses the G1.a 5-part shape and its content carries the
+;;;   originating request's msg_id as `target_msg_id`, so future multi-command
+;;;   UIs can show per-command state instead of a global busy flag.
 
 (defvar *demo-session-id* nil
   "Session id of the fixed demo agent session managed by boot-hub.
@@ -20,6 +29,87 @@
 (defun %cp-client-or-mock ()
   "Return *demo-cp-client* when set, else :mock-client for offline tests."
   (or *demo-cp-client* :mock-client))
+
+;;; --- G2.a: status envelope + broadcast ---------------------------------
+
+(defun %status-state-string (state)
+  "Translate the :state keyword into its wire string.  Unknown keywords
+   fall through as their downcased symbol-name, which keeps the envelope
+   well-formed even if a future caller passes an exotic state."
+  (cond
+    ((eq state :processing) "processing")
+    ((eq state :idle)       "idle")
+    ((eq state :error)      "error")
+    ((stringp state)        state)
+    (t (string-downcase (symbol-name state)))))
+
+(defun %status-mode-string (mode)
+  "Translate the :mode keyword into its wire string.
+   Mode 1 = Jupyter 5-part envelope (current UI), Mode 2 = legacy CP."
+  (cond
+    ((eq mode :1)   "1")
+    ((eq mode :2)   "2")
+    ((stringp mode) mode)
+    ((integerp mode) (princ-to-string mode))
+    (t "1")))
+
+(defun build-status-envelope (&key msg-id state (mode :1) error-class session-id)
+  "Return a JSON string: a 5-part envelope with header.msg_type=\"status\".
+
+   Keywords:
+     :msg-id       target request's msg_id (goes to content.target_msg_id).
+                   May be NIL — callers that broadcast a session-wide status
+                   without a specific request pass nil, and the field is
+                   serialised as an empty string.
+     :state        :processing | :idle | :error  (content.state string).
+     :mode         :1 | :2     (content.mode string).
+     :error-class  symbol or string — when STATE is :error, its lowercased
+                   name lands in content.error_class for UI diagnostics.
+     :session-id   envelope header.session. Defaults to *demo-session-id*
+                   so the broadcast chains back to the originating request.
+
+   The envelope's own header.msg_id is a fresh UUID (via %make-header);
+   the target request's msg_id is carried in content.target_msg_id so
+   clients can correlate status events with in-flight requests."
+  (let* ((sess     (or session-id *demo-session-id* ""))
+         (target   (or msg-id ""))
+         (err-str  (cond
+                     ((null error-class) nil)
+                     ((stringp error-class) error-class)
+                     ((symbolp error-class)
+                      (string-downcase (symbol-name error-class)))
+                     (t (princ-to-string error-class))))
+         (content  (if err-str
+                       (%json-object
+                        "state"         (%status-state-string state)
+                        "mode"          (%status-mode-string mode)
+                        "target_msg_id" target
+                        "error_class"   err-str)
+                       (%json-object
+                        "state"         (%status-state-string state)
+                        "mode"          (%status-mode-string mode)
+                        "target_msg_id" target))))
+    (%write-json (%make-envelope "status" sess content))))
+
+(defun broadcast-status (&key msg-id state (mode :1) error-class session-id)
+  "Push a STATUS envelope to every connected /ws/control client.
+
+   Returns the recipient count (an integer).  With zero subscribers the
+   function is a no-op returning 0 — safe to call from unit tests that
+   never start the acceptor.
+
+   The actual send routes through control.lisp's control-broadcast; we
+   look it up via FUNCALL so this file stays clean of a cross-file
+   forward reference at load time (control.lisp is loaded later in the
+   ASDF serial sequence)."
+  (let ((text (build-status-envelope :msg-id       msg-id
+                                     :state        state
+                                     :mode         mode
+                                     :error-class  error-class
+                                     :session-id   session-id)))
+    (if (fboundp 'control-broadcast)
+        (funcall 'control-broadcast text)
+        0)))
 
 (defun input-bridge-handler (id cmd)
   "Handle POST /cases/:id/input.
@@ -72,15 +162,39 @@
       ((null *demo-session-id*)
        "{\"error\":\"no demo session configured yet\"}")
       ;; Mode 2 — legacy CP path (kept for backwards compat).
+      ;;
+      ;; G2.a: bracket the send with STATUS broadcasts so the UI can show
+      ;; an in-flight indicator.  The target_msg_id carried in each status
+      ;; is the msg_id of the frame we just built (extracted via the
+      ;; header accessor defined in cp-client.lisp), which lets a future
+      ;; multi-command UI key state per-request.  On error we emit
+      ;; :error (with error_class) before propagating the condition.
       (t
-       (let* ((client  (%cp-client-or-mock))
-              (frame   (make-cp-input cmd :session-id *demo-session-id*))
-              (resp    (send-cp-command client frame))
-              (n-bytes (length frame)))
-         (declare (ignore resp))
-         (format nil "{\"ok\":true,\"session\":\"~a\",\"bytes\":~d}"
-                 (%json-escape *demo-session-id*)
-                 n-bytes))))))
+       (let* ((client    (%cp-client-or-mock))
+              (frame     (make-cp-input cmd :session-id *demo-session-id*))
+              (target-id (%extract-outgoing-msg-id frame))
+              (n-bytes   (length frame)))
+         (broadcast-status :msg-id     target-id
+                           :state      :processing
+                           :mode       :1
+                           :session-id *demo-session-id*)
+         (handler-case
+             (let ((resp (send-cp-command client frame)))
+               (declare (ignore resp))
+               (broadcast-status :msg-id     target-id
+                                 :state      :idle
+                                 :mode       :1
+                                 :session-id *demo-session-id*)
+               (format nil "{\"ok\":true,\"session\":\"~a\",\"bytes\":~d}"
+                       (%json-escape *demo-session-id*)
+                       n-bytes))
+           (error (c)
+             (broadcast-status :msg-id      target-id
+                               :state       :error
+                               :mode        :1
+                               :error-class (type-of c)
+                               :session-id  *demo-session-id*)
+             (error c))))))))
 
 ;;; T2.c — parse-demo-session-name
 ;;; Pure function: given the stdout string from `deckpilot launch`, extract
