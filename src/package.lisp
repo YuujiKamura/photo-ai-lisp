@@ -62,4 +62,8 @@
            #:cp-tail
            #:cp-input
            #:wait-for-completion
-           #:invoke-via-cp))
+           #:invoke-via-cp
+           ;; issue #19 — T2.b: CP UI bridge
+           #:*demo-session-id*
+           #:*demo-cp-client*
+           #:input-bridge-handler))
