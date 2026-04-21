@@ -74,6 +74,36 @@
     list-style: none; padding-left: 8px; font-size: 12px;
     color: var(--text-muted);
   }
+
+  /* G2.b (issue #30 Phase 2 Team β) — CP busy indicator.
+     Hidden by default; the /ws/control status handler toggles it on
+     STATUS=PROCESSING and off on STATUS=IDLE.  Inline CSS, zero deps.
+     The spinner glyph uses a CSS keyframe so we don't need an image. */
+  .cp-status {
+    display: none;
+    font-size: 14px;
+    color: var(--text-muted);
+    padding: 6px 10px;
+    margin-top: 4px;
+    border-radius: 4px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    line-height: 1.2;
+  }
+  .cp-status.active { display: inline-block; }
+  .cp-status.error  {
+    display: inline-block;
+    color: #ff6a6a;
+    border-color: #ff6a6a;
+  }
+  .cp-status .glyph {
+    display: inline-block;
+    animation: cp-spin 1.2s linear infinite;
+  }
+  @keyframes cp-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
 </style>
 </head>
 <body>
@@ -82,6 +112,11 @@
   <div>
     <div class="brand">photo-ai-lisp</div>
     <div class="hint">curl /api/inject?text=... で外部からコマンド送信</div>
+    <!-- G2.b: in-flight CP command indicator. Hidden until /ws/control
+         pushes a status envelope with content.state=processing. -->
+    <div id="cp-status" class="cp-status" aria-live="polite">
+      <span class="glyph">⟳</span> <span class="label">processing…</span>
+    </div>
   </div>
   <div>
     <h2>プリセット</h2>
@@ -112,6 +147,43 @@
   //   business-ui / all / static -> sidebar HTML changed; swap in place.
   // Either path avoids a full page refresh so the PTY (owned by Lisp)
   // keeps running and only the renderer re-hydrates.
+
+  // G2.b (issue #30 Phase 2 Team β) — CP busy indicator helpers.
+  //
+  // The Lisp hub pushes a 5-part envelope on /ws/control with
+  // header.msg_type="status" before and after every legacy-CP INPUT
+  // dispatch.  content.state drives the div:
+  //   processing -> show spinner
+  //   idle       -> hide
+  //   error      -> flash red for 2 s, then hide
+  //
+  // Zero dependencies — this is vanilla JS touching the div installed
+  // under .sidebar above.  No debounce: the server guarantees a paired
+  // processing/terminal sequence per request.
+  const cpStatusEl = document.getElementById('cp-status');
+  let cpStatusErrorTimer = null;
+  function setCpStatus(state) {
+    if (!cpStatusEl) return;
+    if (cpStatusErrorTimer) {
+      clearTimeout(cpStatusErrorTimer);
+      cpStatusErrorTimer = null;
+    }
+    cpStatusEl.classList.remove('active', 'error');
+    const label = cpStatusEl.querySelector('.label');
+    if (state === 'processing') {
+      if (label) label.textContent = 'processing…';
+      cpStatusEl.classList.add('active');
+    } else if (state === 'error') {
+      if (label) label.textContent = 'error';
+      cpStatusEl.classList.add('error');
+      cpStatusErrorTimer = setTimeout(() => {
+        cpStatusEl.classList.remove('error');
+        cpStatusErrorTimer = null;
+      }, 2000);
+    }
+    // state === 'idle' (or anything else): both classes removed above.
+  }
+
   function openControlWS() {
     const cws = new WebSocket('ws://' + location.host + '/ws/control');
     cws.onmessage = (ev) => {
@@ -127,6 +199,21 @@
         if (what === 'business-ui' || what === 'all' || what === 'static') {
           // Refresh only the sidebar fragments. Terminal iframe untouched.
           refreshPresets();
+        }
+        return;
+      }
+      // 5-part envelope probe: STATUS events arrive as JSON text frames.
+      // Anything that fails JSON.parse or lacks header.msg_type is ignored,
+      // so new msg_types added by future atoms don't break the UI.
+      if (msg.length > 0 && msg.charAt(0) === '{') {
+        try {
+          const parsed = JSON.parse(msg);
+          const hdr = parsed && parsed.header;
+          if (hdr && hdr.msg_type === 'status' && parsed.content) {
+            setCpStatus(String(parsed.content.state || ''));
+          }
+        } catch (_) {
+          // Non-JSON control frame; drop silently.
         }
       }
     };
