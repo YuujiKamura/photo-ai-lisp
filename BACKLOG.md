@@ -579,6 +579,45 @@ data-flow diagrams, and the Tier-3 candidate-task decision.
            a one-paragraph README pointing to each.
       Est: 0.5h · Agent hint: Claude Sonnet | Gemini
 
+### Tier 1.5 — CP protocol infrastructure (from `docs/jupyter-translation.md`)
+
+External-reference-driven pre-Tier-2 blockers. 2026-04-21 survey of Jupyter
+messaging spec (local clone at `C:/Users/yuuji/ref/`) surfaced root causes
+of PR #24 review feedback (timeout/hang, false CONNECT OK). Fixing these
+at the protocol layer is cheaper than papering over symptoms in each script.
+
+- [ ] **T1.5.a** CP envelope v2: msg_id + parent_header + pending-request table
+      Implements: `src/cp-protocol.lisp` (msg_id / parent_header fields in
+                  `make-cp-*` and `cp-parse-response`), `src/cp-client.lisp`
+                  (pending-request hash table keyed by msg_id, `send-cp-command`
+                  uses `bt:condition-wait :timeout` per-request).
+      Deps: T1.d · Branch: `feat/t1-5a-parent-header`
+      DoD: 4-verb smoke still passes; a new test case "send 2 INPUT concurrently,
+           assert each reply matches its request's msg_id" passes; sending to a
+           dead daemon returns an error within 5s instead of hanging forever.
+      Est: 2-3h · Agent hint: Main Claude Opus (bug-fix + schema change, has unknowns)
+
+- [ ] **T1.5.b** busy/idle status broadcast
+      Implements: `src/cp-ui-bridge.lisp` (wrap INPUT handler so it emits
+                  `{msg_type:status,content:{execution_state:busy}}` before
+                  send and `=idle` after the last streamed chunk).
+      Deps: T1.5.a, T2.b (cp-ui-bridge exists) · Branch: `feat/t1-5b-busy-idle`
+      DoD: sending INPUT via the UI causes a `status=busy` frame on WS, then
+           `status=idle` after agent finishes; an iframe status dot turns
+           red-while-busy / green-while-idle (trivial CSS).
+      Est: 1-2h · Agent hint: Claude Sonnet (UI wiring + straightforward logic)
+
+- [ ] **T1.5.c** (deferred) ACP / MCP compatibility investigation
+      Implements: `docs/acp-compatibility.md` — map current CP to Agent Client
+                  Protocol; identify gaps; decision: pivot, partial-adopt, or
+                  stay bespoke. MCP: evaluate wrapping `photo-ai-go` as an MCP
+                  server for Tier 3 direct-tool path.
+      Deps: Tier 2 demo land · Branch: `docs/t1-5c-acp-mcp`
+      DoD: doc states pivot/partial/stay decision with 3-line rationale each,
+           plus 1 sentence on whether photo-ai-go-as-MCP-server unblocks any
+           Tier 3 atoms.
+      Est: 4h research · Agent hint: Main Claude Opus
+
 ### Tier 2 — Minimal vertical slice
 
 Scope lock: one browser page, one iframe, one button, one fixed agent.
