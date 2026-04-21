@@ -63,6 +63,11 @@
            #:cp-input
            #:wait-for-completion
            #:invoke-via-cp
+           ;; issue #30 Phase 2 (G1.b) — pending-request table public surface
+           #:cp-request-timeout
+           #:cp-request-timeout-msg-id
+           #:cp-request-timeout-timeout
+           #:*cp-default-timeout*
            ;; issue #19 — T2.b: CP UI bridge
            #:*demo-session-id*
            #:*demo-cp-client*
