@@ -106,6 +106,17 @@
     color: var(--text-muted);
   }
 
+  /* #38 — preset group header. Server-driven 2-level menu: presets
+     with group=null render flat as before; presets sharing a group
+     value get nested under one of these headers. The header itself is
+     not a button (no inject) — purely a visual bucket. */
+  .preset-group-head {
+    font-size: 11px; text-transform: uppercase;
+    color: var(--text-muted); margin: 8px 0 4px;
+    padding-left: 2px;
+  }
+  .preset-group-body { padding-left: 8px; }
+
   /* G2.b (issue #30 Phase 2 Team β) — CP busy indicator.
      Hidden by default; the /ws/control status handler toggles it on
      STATUS=PROCESSING and off on STATUS=IDLE.  Inline CSS, zero deps.
@@ -310,13 +321,35 @@
       const target = document.getElementById('presetList');
       target.classList.remove('placeholder');
       target.innerHTML = '';
+      // #38 — 2-level grouping. group=null → flat button at top level.
+      // group="X" → first encounter creates a header + body container,
+      // subsequent presets with the same group append into that body.
+      // Order is preserved exactly as the server emits it (declaration
+      // order from defpreset), so layout is controlled in presets.lisp.
+      const groupBodies = Object.create(null);
       (presets || []).forEach(p => {
         const b = document.createElement('button');
         b.className = 'btn';
         b.textContent = p.name;
         b.title = (p.argv || []).join(' ');
         b.addEventListener('click', () => runPreset(p.name, p.argv, p.input));
-        target.appendChild(b);
+        const g = (typeof p.group === 'string' && p.group.length > 0) ? p.group : null;
+        if (g === null) {
+          target.appendChild(b);
+          return;
+        }
+        let body = groupBodies[g];
+        if (!body) {
+          const head = document.createElement('div');
+          head.className = 'preset-group-head';
+          head.textContent = g;
+          target.appendChild(head);
+          body = document.createElement('div');
+          body.className = 'preset-group-body';
+          target.appendChild(body);
+          groupBodies[g] = body;
+        }
+        body.appendChild(b);
       });
     } catch (_) { /* transient; retry next tick */ }
   }
