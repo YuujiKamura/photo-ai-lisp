@@ -22,11 +22,18 @@
 ;;;   (defpreset <name>
 ;;;     :argv ("arg0" "arg1" ...)
 ;;;     :input "初期プロンプト" ; optional, nil for no follow-up
+;;;     :group "解析"           ; optional, nil for top-level
 ;;;     )
 
 (defvar *presets* (make-hash-table :test 'equal)
-  "Name (string) → plist (:argv (...) :input string-or-nil).
+  "Name (string) → plist (:argv (...) :input string-or-nil :group string-or-nil).
    Populated by DEFPRESET.")
+
+(defvar *preset-order* '()
+  "Preset names in insertion order (most recently defined first). DEFPRESET
+   pushes new names onto the head; LIST-PRESET-NAMES reverses to yield
+   declaration order. REPL redefinition of an existing preset does not
+   append again, so the order stays stable across hot-swap.")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun %expand-preset-argv (form)
@@ -50,7 +57,7 @@
       ;; Assume an already list-producing form (LIST, APPEND, etc.).
       (t form))))
 
-(defmacro defpreset (name &key argv input)
+(defmacro defpreset (name &key argv input group)
   "Register a preset under NAME (keyword or string).
 
    :ARGV is a list of argv tokens to inject into the terminal. Either a
@@ -61,10 +68,21 @@
    NIL) used as an initial prompt to broadcast into the agent after
    spawn. Defaults to NIL.
 
-   REPL re-evaluation just overwrites the existing entry."
-  `(setf (gethash ,(string-downcase (string name)) *presets*)
-         (list :argv ,(%expand-preset-argv argv)
-               :input ,input)))
+   :GROUP is an optional string — if non-nil, the UI buckets the preset
+   under a group header of that name (2-level menu). NIL means the
+   preset is a top-level button.
+
+   REPL re-evaluation just overwrites the existing entry and preserves
+   the preset's original declaration position in *preset-order*."
+  (let ((key (string-downcase (string name))))
+    `(progn
+       (setf (gethash ,key *presets*)
+             (list :argv ,(%expand-preset-argv argv)
+                   :input ,input
+                   :group ,group))
+       (unless (member ,key *preset-order* :test #'equal)
+         (setf *preset-order* (append *preset-order* (list ,key))))
+       ,key)))
 
 (defun find-preset (name)
   "Look up NAME (any case) in the preset registry. Returns the full
@@ -82,11 +100,25 @@
   (let ((entry (find-preset name)))
     (and entry (getf entry :input))))
 
+(defun find-preset-group (name)
+  "Group label for NAME, or NIL if the preset is top-level (or unknown)."
+  (let ((entry (find-preset name)))
+    (and entry (getf entry :group))))
+
 (defun list-preset-names ()
-  "All registered preset names, sorted."
-  (let (names)
-    (maphash (lambda (k _v) (declare (ignore _v)) (push k names)) *presets*)
-    (sort names #'string<)))
+  "All registered preset names in declaration order. Defined presets
+   missing from *preset-order* (shouldn't happen in practice) get
+   sorted to the end so the UI still sees them."
+  (let* ((known (remove-if-not (lambda (k) (gethash k *presets*))
+                               *preset-order*))
+         (known-set (copy-list known))
+         (extras '()))
+    (maphash (lambda (k _v)
+               (declare (ignore _v))
+               (unless (member k known-set :test #'equal)
+                 (push k extras)))
+             *presets*)
+    (append known (sort extras #'string<))))
 
 ;; ---- bundled presets -----------------------------------------------------
 ;;
@@ -96,19 +128,22 @@
 
 (defpreset "hello"
   :argv ("echo" "hello" "from" "photo-ai-lisp")
-  :input nil)
+  :input nil
+  :group nil)
 
 (defpreset "skills-list"
   :argv (list (if (uiop:os-windows-p) "dir" "ls")
               (if (uiop:os-windows-p)
                   "C:\\Users\\yuuji\\.agents\\skills\\"
                   "~/.agents/skills/"))
-  :input nil)
+  :input nil
+  :group nil)
 
 (defpreset "date"
   :argv (list (if (uiop:os-windows-p) "echo" "date")
               (if (uiop:os-windows-p) "%DATE%" "+%Y-%m-%dT%H:%M:%S"))
-  :input nil)
+  :input nil
+  :group nil)
 
 ;; ---- hot reload ----------------------------------------------------------
 
@@ -202,17 +237,23 @@
 
 (defun list-presets-handler ()
   "HTTP handler body for GET /api/presets. Returns a JSON array of
-   {name, argv, input} so the UI can render buttons dynamically.
-   input is null when the preset has no initial prompt."
+   {name, argv, input, group} in declaration order so the UI can render
+   buttons dynamically with a stable 2-level grouping.
+   input and group are null when the preset has no initial prompt or
+   no group header (top-level)."
   (let ((objs
           (loop for name in (list-preset-names)
                 for argv = (find-preset-argv name)
                 for input = (find-preset-input name)
+                for group = (find-preset-group name)
                 collect (format nil
-                                "{\"name\":\"~a\",\"argv\":[~{\"~a\"~^,~}],\"input\":~a}"
+                                "{\"name\":\"~a\",\"argv\":[~{\"~a\"~^,~}],\"input\":~a,\"group\":~a}"
                                 (%json-escape name)
                                 (mapcar #'%json-escape argv)
                                 (if input
                                     (format nil "\"~a\"" (%json-escape input))
+                                    "null")
+                                (if group
+                                    (format nil "\"~a\"" (%json-escape group))
                                     "null")))))
     (format nil "[~{~a~^,~}]" objs)))
