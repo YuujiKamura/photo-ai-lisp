@@ -16,9 +16,9 @@
    the new preset is visible via find-preset."
   (let ((photo-ai-lisp::*presets* (make-hash-table :test 'equal)))
     (photo-ai-lisp::live-eval
-     "(defpreset \"eval-test\" \"echo\" \"alive\")")
+     "(defpreset \"eval-test\" :argv (list \"echo\" \"alive\"))")
     (5am:is (equal '("echo" "alive")
-                   (photo-ai-lisp::find-preset "eval-test")))))
+                   (photo-ai-lisp::find-preset-argv "eval-test")))))
 
 (5am:test live-eval-read-error-returned-as-json-error
   (let ((r (photo-ai-lisp::live-eval "(this is not balanced")))

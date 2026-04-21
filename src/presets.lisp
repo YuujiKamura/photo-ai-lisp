@@ -2,34 +2,85 @@
 
 ;;; Preset registry — the allowlist the UI injects into the live terminal.
 ;;;
-;;; Each preset is a named list of argv tokens. The UI joins them with
-;;; spaces + CR and postMessages the result into the /shell iframe, where
-;;; xterm.js forwards it over /ws/shell into the already-running shell
-;;; (cmd.exe on Windows, bash on Unix). No server-side subprocess spawn
-;;; happens here — the injected text runs inside the shell the user is
-;;; already looking at.
+;;; Each preset is a named entry with argv tokens plus an optional
+;;; initial input prompt. The UI joins argv with spaces + CR and
+;;; postMessages the result into the /shell iframe, where xterm.js
+;;; forwards it over /ws/shell into the already-running shell (cmd.exe
+;;; on Windows, bash on Unix). No server-side subprocess spawn happens
+;;; here — the injected text runs inside the shell the user is already
+;;; looking at.
+;;;
+;;; If :input is non-nil the UI fires it as a follow-up message into
+;;; the just-spawned agent (see issue #38 for the broadcast-input flow).
 ;;;
 ;;; Contract with the front end:
 ;;;   preset argv must be a safe command line as typed in the target
 ;;;   shell. No shell metacharacters beyond what you would type
 ;;;   intentionally. CR is appended client-side to trigger execution.
 ;;;
-;;; DSL: (defpreset <name> "arg0" "arg1" ...) registers one entry.
+;;; DSL:
+;;;   (defpreset <name>
+;;;     :argv ("arg0" "arg1" ...)
+;;;     :input "初期プロンプト" ; optional, nil for no follow-up
+;;;     )
 
 (defvar *presets* (make-hash-table :test 'equal)
-  "Name (string) → list of argv strings. Populated by DEFPRESET.")
+  "Name (string) → plist (:argv (...) :input string-or-nil).
+   Populated by DEFPRESET.")
 
-(defmacro defpreset (name &rest argv)
-  "Register a preset under NAME (keyword or string) with ARGV as the
-   argv tokens to inject into the terminal. REPL re-evaluation just
-   overwrites the existing entry."
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun %expand-preset-argv (form)
+    "Lower an :argv keyword value into a Lisp expression that yields the
+     argv string list.
+
+     Two shapes are supported:
+       :argv (\"claude\" \"--foo\")            literal list of strings
+       :argv (list (if ...) \"--foo\" ...)     explicit list constructor
+
+     The literal form (plain parenthesized strings) is re-wrapped with
+     LIST so that evaluation does not try to funcall the head string.
+     Any form whose head is a non-string symbol (e.g. LIST, APPEND,
+     QUOTE) is passed through unchanged."
+    (cond
+      ;; NIL / empty argv — unusual but legal, treat as empty list.
+      ((null form) ''())
+      ;; Literal list of strings: (\"a\" \"b\").
+      ((and (consp form) (stringp (car form)))
+       `(list ,@form))
+      ;; Assume an already list-producing form (LIST, APPEND, etc.).
+      (t form))))
+
+(defmacro defpreset (name &key argv input)
+  "Register a preset under NAME (keyword or string).
+
+   :ARGV is a list of argv tokens to inject into the terminal. Either a
+   literal (\"claude\" \"--foo\") or an expression that evaluates to a
+   list ((list (if ...) ...)).
+
+   :INPUT is an optional string (or expression evaluating to one, or
+   NIL) used as an initial prompt to broadcast into the agent after
+   spawn. Defaults to NIL.
+
+   REPL re-evaluation just overwrites the existing entry."
   `(setf (gethash ,(string-downcase (string name)) *presets*)
-         (list ,@argv)))
+         (list :argv ,(%expand-preset-argv argv)
+               :input ,input)))
 
 (defun find-preset (name)
-  "Look up NAME (any case) in the preset registry. Returns the argv
-   list or NIL if unknown."
+  "Look up NAME (any case) in the preset registry. Returns the full
+   plist (:argv (...) :input ...) or NIL if unknown."
   (gethash (string-downcase (string name)) *presets*))
+
+(defun find-preset-argv (name)
+  "argv list for NAME, or NIL if the preset is unknown."
+  (let ((entry (find-preset name)))
+    (and entry (getf entry :argv))))
+
+(defun find-preset-input (name)
+  "Initial input string for NAME, or NIL if the preset has no initial
+   prompt (or is unknown)."
+  (let ((entry (find-preset name)))
+    (and entry (getf entry :input))))
 
 (defun list-preset-names ()
   "All registered preset names, sorted."
@@ -44,23 +95,20 @@
 ;; macroexpansion so REPL redefinition still works.
 
 (defpreset "hello"
-  "echo" "hello" "from" "photo-ai-lisp")
+  :argv ("echo" "hello" "from" "photo-ai-lisp")
+  :input nil)
 
 (defpreset "skills-list"
-  (if (uiop:os-windows-p)
-      "dir"
-      "ls")
-  (if (uiop:os-windows-p)
-      "C:\\Users\\yuuji\\.agents\\skills\\"
-      "~/.agents/skills/"))
+  :argv (list (if (uiop:os-windows-p) "dir" "ls")
+              (if (uiop:os-windows-p)
+                  "C:\\Users\\yuuji\\.agents\\skills\\"
+                  "~/.agents/skills/"))
+  :input nil)
 
 (defpreset "date"
-  (if (uiop:os-windows-p)
-      "echo"
-      "date")
-  (if (uiop:os-windows-p)
-      "%DATE%"
-      "+%Y-%m-%dT%H:%M:%S"))
+  :argv (list (if (uiop:os-windows-p) "echo" "date")
+              (if (uiop:os-windows-p) "%DATE%" "+%Y-%m-%dT%H:%M:%S"))
+  :input nil)
 
 ;; ---- hot reload ----------------------------------------------------------
 
@@ -154,11 +202,17 @@
 
 (defun list-presets-handler ()
   "HTTP handler body for GET /api/presets. Returns a JSON array of
-   {name, argv} so the UI can render buttons dynamically."
+   {name, argv, input} so the UI can render buttons dynamically.
+   input is null when the preset has no initial prompt."
   (let ((objs
           (loop for name in (list-preset-names)
-                for argv = (find-preset name)
-                collect (format nil "{\"name\":\"~a\",\"argv\":[~{\"~a\"~^,~}]}"
+                for argv = (find-preset-argv name)
+                for input = (find-preset-input name)
+                collect (format nil
+                                "{\"name\":\"~a\",\"argv\":[~{\"~a\"~^,~}],\"input\":~a}"
                                 (%json-escape name)
-                                (mapcar #'%json-escape argv)))))
+                                (mapcar #'%json-escape argv)
+                                (if input
+                                    (format nil "\"~a\"" (%json-escape input))
+                                    "null")))))
     (format nil "[~{~a~^,~}]" objs)))

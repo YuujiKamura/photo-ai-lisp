@@ -29,13 +29,14 @@
                                   :if-exists :supersede
                                   :external-format :utf-8)
             (write-line "(in-package #:photo-ai-lisp)" s)
-            (format s "(defpreset ~s \"echo\" ~s)~%" marker marker))
+            (format s "(defpreset ~s :argv (list \"echo\" ~s))~%"
+                    marker marker))
           ;; Precondition: not present yet.
           (5am:is (null (photo-ai-lisp::find-preset marker)))
           (load path)
           ;; Postcondition: now present.
           (5am:is (equal (list "echo" marker)
-                         (photo-ai-lisp::find-preset marker))))
+                         (photo-ai-lisp::find-preset-argv marker))))
       (ignore-errors (delete-file path)))))
 
 (5am:test reloadable-modules-is-nonempty
