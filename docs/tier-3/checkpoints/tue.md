@@ -79,3 +79,48 @@ Tier 2 demo が mock ticked から real shell-broadcast round-trip
 (T2.h pivot) に移行した日。Tier 3 開始は Bug 1 ランド後。usage-log
 の自動書き出し (C1 sub) が未完なので、今日の hub INPUT 数は手動
 tally。明日 (水) までに usage.log 自動化を潰したい。
+
+---
+
+## 6. Phase 2 Landing Summary (PM4 handoff)
+
+### Commits to main (today)
+
+| SHA | Description |
+|-----|-------------|
+| `a8c484d` | merge: G1.a envelope 5-part (fiveam 160 / 154 run / 6 skip / 0 fail) |
+| `5eb38df` | docs(g12a): ACP gap analysis (1782 words) |
+| `bd14b6e` | merge: G1.b pending-request table (Code Reviewer 10/10 PASS) |
+| `60a9a98` | merge: G2 status broadcast + UI spinner (Code Reviewer 13/13 PASS) |
+
+Tip: main @ `60a9a98` is the reference SHA for the rest of the week.
+
+### Fiveam delta
+
+- Before PM4: **143** checks
+- After PM4:  **234** checks (**+91**)
+- Breakdown: Pass **228** / Skip **6** / **Fail 0**
+
+### Phase 2 landing status
+
+| Lane | Scope | Status |
+|------|-------|--------|
+| α    | G1.b pending-request table            | ✅ landed (`bd14b6e`) |
+| β    | G2 status broadcast + UI spinner      | ✅ landed (`60a9a98`) |
+| γ    | G12.a ACP gap analysis (docs)         | ✅ landed (`5eb38df`) |
+| δ    | G1.c negotiation                      | ⛔ BLOCKED on deckpilot issue |
+| ε    | G13.a MCP server (photo-ai-go)        | ↗️ separate repo / session |
+
+### Tier 3 dogfood INPUT run today
+
+**Actual hub INPUT runs: 0 件**. C1 usage-log landing (scaffolding above)
+gives the measurement plumbing, but no real hub INPUT traffic was generated
+on Day 1. Wed–Fri must hit **≥4/day × 3 days = ≥12** to reach the weekly
+**≥16** bar (weekly target was re-scoped to ≥15; we aim ≥16 for headroom).
+
+### Blockers / risks going into Day 2
+
+- Day 1 zero-INPUT means the weekly budget is back-loaded onto Wed/Thu/Fri.
+  Single slip day endangers the Fri verdict.
+- δ (G1.c negotiation) stays parked until the deckpilot issue is decided;
+  don't let it absorb Wed bandwidth — focus on INPUT generation first.
