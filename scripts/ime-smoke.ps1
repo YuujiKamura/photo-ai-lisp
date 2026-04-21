@@ -144,7 +144,7 @@ if ($hwnd -eq [IntPtr]::Zero) {
   Start-Process -FilePath $Chrome -ArgumentList @(
     "--app=$Hub/",
     "--user-data-dir=$profile",
-    "--window-size=1400,900"
+    "--window-size=1280,780"
   )
   Write-Host "    Waiting 6s for Chrome to open ..."
   Start-Sleep -Seconds 6
