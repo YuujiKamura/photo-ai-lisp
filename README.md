@@ -1,3 +1,4 @@
+<img width="1519" height="1032" alt="image" src="https://github.com/user-attachments/assets/8f721815-c462-4880-ae01-c5d6ec94046d" />
 # photo-ai-lisp
 
 工事写真パイプラインのローカルオーケストレータ。ターミナル表示 + マスタ CSV + スキル群を 1 パッケージで携帯・配布することがゴール。
