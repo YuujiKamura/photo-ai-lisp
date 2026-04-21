@@ -66,6 +66,39 @@
   .placeholder {
     color: var(--text-muted); font-size: 12px; line-height: 1.6;
   }
+
+  /* #37 case C — inject form */
+  .inject-form {
+    display: flex; flex-direction: column; gap: 6px;
+    border-top: 1px solid var(--border); padding-top: 12px;
+  }
+  .inject-form label {
+    font-size: 11px; text-transform: uppercase; color: var(--text-muted);
+  }
+  .inject-form textarea {
+    width: 100%; rows: 3;
+    background: #0f0f14; color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 12px;
+    padding: 6px 8px; resize: vertical;
+    outline: none; transition: border-color .15s;
+  }
+  .inject-form textarea:focus { border-color: var(--accent); }
+  .inject-form textarea.ok   { border-color: #4caf82; }
+  .inject-form textarea.err  { border-color: #ff6a6a; }
+  .inject-form .inject-row {
+    display: flex; gap: 6px; align-items: center;
+  }
+  .inject-form .inject-send {
+    flex-shrink: 0; padding: 5px 12px;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 4px; font-size: 12px; cursor: pointer;
+  }
+  .inject-form .inject-send:disabled { opacity: .5; cursor: default; }
+  .inject-form .inject-send:hover:not(:disabled) { opacity: .85; }
+  .inject-form .inject-hint {
+    font-size: 10px; color: var(--text-muted);
+  }
   .master-group { margin-bottom: 8px; }
   .master-group > .head {
     font-size: 12px; font-weight: 600; margin-bottom: 2px;
@@ -121,6 +154,14 @@
   <div>
     <h2>プリセット</h2>
     <div id="presetList" class="placeholder">(読込中)</div>
+  </div>
+  <div class="inject-form">
+    <label>PTY 入力 (IME 対応)</label>
+    <textarea id="inject-text" rows="3" placeholder="入力 (Ctrl+Enter で送信)"></textarea>
+    <div class="inject-row">
+      <button class="inject-send" id="inject-send">Send</button>
+      <span class="inject-hint">Ctrl+Enter で送信 / Enter は改行</span>
+    </div>
   </div>
 </aside>
 
@@ -259,6 +300,54 @@
   // "this didn't update" and keeps the server load trivial.
   refreshPresets();
   setInterval(refreshPresets, 2000);
+
+  // #37 case C — inject form wiring.
+  // Uses the same /api/inject endpoint as preset buttons and external curl.
+  // IME preedit/confirmation is fully handled by the browser-native textarea;
+  // we never touch e.key during composition so preedit is never truncated.
+  (function () {
+    const ta  = document.getElementById('inject-text');
+    const btn = document.getElementById('inject-send');
+    if (!ta || !btn) return;
+
+    let flashTimer = null;
+    function flash(cls) {
+      ta.classList.remove('ok', 'err');
+      ta.classList.add(cls);
+      if (flashTimer) clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => ta.classList.remove(cls), 800);
+    }
+
+    async function sendInject() {
+      const raw = ta.value;
+      if (!raw) return;
+      const text = raw + '\r'; // CR = shell Enter
+      btn.disabled = true;
+      try {
+        const r = await fetch('/api/inject?text=' + encodeURIComponent(text), { method: 'GET' });
+        if (r.ok) {
+          ta.value = '';
+          flash('ok');
+        } else {
+          flash('err');
+        }
+      } catch (_) {
+        flash('err');
+      } finally {
+        btn.disabled = false;
+        ta.focus();
+      }
+    }
+
+    btn.addEventListener('click', sendInject);
+    ta.addEventListener('keydown', function (e) {
+      // Ctrl+Enter (or Cmd+Enter on Mac) submits. Skip if IME is composing.
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        sendInject();
+      }
+    });
+  })();
 </script>
 
 </body>
