@@ -122,28 +122,78 @@
 
 ;; ---- bundled presets -----------------------------------------------------
 ;;
-;; Each preset is the plain command line a user would type into the
-;; running shell. OS dispatch happens via uiop:os-windows-p at
-;; macroexpansion so REPL redefinition still works.
+;; Each preset spawns `claude --dangerously-skip-permissions` and then
+;; broadcasts an initial prompt (preset.input) describing what the
+;; agent should do.  The argv is identical for every entry below — the
+;; "what" lives entirely in :input.  See issue #38.
+;;
+;; Layout (declaration order = UI render order, see *preset-order*):
+;;
+;;   学習                  (top-level)
+;;   施工状況              ┐
+;;   出来形管理             │  group "解析"
+;;   品質管理              │
+;;   その他                ┘
+;;   マスタ確認            (top-level)
+;;
+;; The four 解析 presets share a common footer (chat fallback +
+;; master-not-selected hint).  *analyze-footer* keeps the footer in
+;; one place and DEF-ANALYZE-PRESET stitches it onto each bias body
+;; at macroexpand time so the JSON the UI sees still contains the
+;; full prompt — no client-side concatenation, no run-time format.
 
-(defpreset "hello"
-  :argv ("echo" "hello" "from" "photo-ai-lisp")
-  :input nil
-  :group nil)
+(defparameter *analyze-footer*
+  "- 対象ディレクトリ / 参照マスタ / 種別 / 出力先が不明なら chat で聞け
+- マスタ未選択なら「マスタ確認 preset で先に」と案内"
+  "Common footer appended to every 解析-group preset's :input. Kept as
+   a defparameter so REPL hot-reload of presets.lisp picks up edits
+   immediately and every analyze preset rebuilds with the new text.")
 
-(defpreset "skills-list"
-  :argv (list (if (uiop:os-windows-p) "dir" "ls")
-              (if (uiop:os-windows-p)
-                  "C:\\Users\\yuuji\\.agents\\skills\\"
-                  "~/.agents/skills/"))
-  :input nil
-  :group nil)
+(defparameter *claude-argv* '("claude" "--dangerously-skip-permissions")
+  "Spawn line shared by every bundled preset. claude CLI with
+   permissions skipped because the agent runs inside the same shell
+   the user is already supervising via xterm.js.")
 
-(defpreset "date"
-  :argv (list (if (uiop:os-windows-p) "echo" "date")
-              (if (uiop:os-windows-p) "%DATE%" "+%Y-%m-%dT%H:%M:%S"))
-  :input nil
-  :group nil)
+(defmacro def-analyze-preset (name bias)
+  "Register a 解析-group preset NAME whose initial prompt is BIAS plus
+   the shared *analyze-footer*. Expands to a plain DEFPRESET so all
+   the order/group/JSON machinery above is reused without a special
+   case. NAME is a string (the preset name shown in the sidebar);
+   BIAS is a string (the bias line specific to this preset)."
+  `(defpreset ,name
+     :argv (list "claude" "--dangerously-skip-permissions")
+     :group "解析"
+     :input (format nil "~a~%~a" ,bias *analyze-footer*)))
+
+(defpreset "学習"
+  :argv (list "claude" "--dangerously-skip-permissions")
+  :group nil
+  :input "photo-reference-build スキルで GT (Excel 一覧 + PDF 写真帳) から reference.json を逆生成しろ。
+- ref に出現してマスタに無い語は検索パターン候補としてユーザーに提示して追記の可否を確認しろ
+- GT パス / 既存マスタ / 出力先が不明なら chat で聞け、推測で進めるな")
+
+(def-analyze-preset "施工状況"
+  "写真区分=施工状況 のバイアスで photo-ai-workflow 全段 (scan → keyword-extract → match-master → report-export) を回せ。施工状況以外の区分が混じったら個別に確認しろ。")
+
+(def-analyze-preset "出来形管理"
+  "写真区分=出来形管理 のバイアスで photo-ai-workflow 全段を回せ。寸法/出来形値の写り込みを優先で読み、出来形以外の写真は別群に分離しろ。")
+
+(def-analyze-preset "品質管理"
+  "写真区分=品質管理 のバイアスで photo-ai-workflow 全段を回せ。温度管理黒板を検出したら photo-temperature-cycle-resolve で 9 枚サイクルを解決してから match-master 結果を上書きしろ。")
+
+(def-analyze-preset "その他"
+  "写真区分のバイアスを掛けず photo-ai-workflow 全段 (AI 抽出 + 決定論判定) を回せ。区分は AI 出力と decisive ルールの合議で決めろ。")
+
+(defpreset "マスタ確認"
+  :argv (list "claude" "--dangerously-skip-permissions")
+  :group nil
+  :input "解析を始める前のドライラン役として動け。
+1. masters/ 配下の CSV/Excel を列挙しろ
+2. 各マスタを行数・写真区分内訳・種別 top-N でプロファイルしろ
+3. ユーザーに「今日の現場で使うマスタはどれか」を選ばせろ
+4. 選ばれたマスタを写真区分 × 種別で絞り込み、該当する全行を列挙しろ
+5. ギャップ (区分/種別の欠落) を発見したら「学習 preset でマスタを育てて」と案内しろ
+連結ツリー整合などの健全性チェックには踏み込むな。あくまで「どのマスタで解析を始めるか」の合意形成だけが役割だ。")
 
 ;; ---- hot reload ----------------------------------------------------------
 

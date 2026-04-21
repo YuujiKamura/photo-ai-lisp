@@ -46,13 +46,26 @@ Windows コマンドプロンプトからは `scripts\demo.cmd`。
 
 ## プリセットの追加
 
-`src/presets.lisp` の `defpreset` で登録。
+`src/presets.lisp` の `defpreset` で登録。3 キーワード:
 
 ```lisp
-(defpreset "hello" "echo" "hello" "from" "photo-ai-lisp")
+(defpreset "施工状況"
+  :argv  (list "claude" "--dangerously-skip-permissions")
+  :group "解析"
+  :input "写真区分=施工状況 のバイアスで photo-ai-workflow 全段を回せ。…")
 ```
 
-argv は「そのままターミナルに打つ安全なコマンド」の想定。
+- `:argv` … クリック時にターミナルへ流す行（`\n` 自動付与）
+- `:input` … argv 起動後にエージェントへ続けて投げる初回プロンプト（任意・nil 可）
+- `:group` … サイドバーで束ねるヘッダ名。`nil` ならトップレベルにフラット表示
+
+宣言順がそのまま UI の表示順になる（`*preset-order*`）。同名 preset を REPL
+で再評価しても順番は維持される。同じ `:group` 値を持つ複数 preset は宣言順で
+1 つのヘッダ配下に並ぶ（2 階層メニュー）。
+
+解析系プリセットは共通フッターを持つので、`def-analyze-preset` ヘルパで
+`:group "解析"` と `*analyze-footer*` の差し込みが自動化されている。バイアス
+本文だけ書けばよい。
 
 ## ホットリロード
 

@@ -133,63 +133,87 @@
       (5am:is (numberp pa))
       (5am:is (< pz pa)))))
 
-;; ---- regression: bundled presets keep their argv semantics --------------
+;; ---- regression: bundled presets carry the new content -----------------
 ;;
-;; Team C replaces the preset *content* later in a separate commit; this
-;; suite is Team A's contract that the DSL refactor did not silently
-;; drop argv tokens for the 3 legacy presets, and that :input defaults
-;; to nil for all of them.
+;; Team C swapped the 3 legacy presets (hello / skills-list / date) for
+;; the 6 production presets that drive the photo-ai pipeline. The tests
+;; below pin the contract Team B relies on:
+;;   - every preset spawns claude with --dangerously-skip-permissions
+;;   - the 4 解析 presets share group "解析" and end with the common
+;;     footer
+;;   - 学習 and マスタ確認 stay top-level (group=null)
+;;   - declaration order matches the menu layout (UI is server-driven)
 
-(5am:test legacy-hello-preset-argv-intact
-  (5am:is (equal '("echo" "hello" "from" "photo-ai-lisp")
-                 (photo-ai-lisp::find-preset-argv "hello")))
-  (5am:is (null (photo-ai-lisp::find-preset-input "hello"))))
+(defparameter *bundled-preset-names*
+  '("学習" "施工状況" "出来形管理" "品質管理" "その他" "マスタ確認")
+  "The 6 bundled presets that ship with photo-ai-lisp, in declaration
+   order. Pinned here so the regression tests below stay readable.")
 
-(5am:test legacy-skills-list-preset-argv-intact
-  (let ((argv (photo-ai-lisp::find-preset-argv "skills-list")))
-    (5am:is (= 2 (length argv)))
-    (5am:is (member (first argv) '("dir" "ls") :test #'equal))
-    (5am:is (null (photo-ai-lisp::find-preset-input "skills-list")))))
+(5am:test bundled-presets-share-claude-argv
+  "Every bundled preset spawns the same claude CLI with skip-permissions —
+   the per-preset behaviour lives entirely in :input."
+  (dolist (name *bundled-preset-names*)
+    (5am:is (equal '("claude" "--dangerously-skip-permissions")
+                   (photo-ai-lisp::find-preset-argv name))
+            "preset ~a has wrong argv" name)))
 
-(5am:test legacy-date-preset-argv-intact
-  (let ((argv (photo-ai-lisp::find-preset-argv "date")))
-    (5am:is (= 2 (length argv)))
-    (5am:is (member (first argv) '("echo" "date") :test #'equal))
-    (5am:is (null (photo-ai-lisp::find-preset-input "date")))))
+(5am:test bundled-presets-have-non-empty-input
+  "Every bundled preset carries an :input string. None should fall back
+   to the legacy nil — the new content model assumes a follow-up prompt
+   is always broadcast after spawn."
+  (dolist (name *bundled-preset-names*)
+    (let ((input (photo-ai-lisp::find-preset-input name)))
+      (5am:is (stringp input) "preset ~a :input not a string" name)
+      (5am:is (plusp (length input)) "preset ~a :input empty" name))))
 
-(5am:test bundled-presets-emit-input-key-in-json
-  "Regardless of Team C's later content swap, every bundled preset
-   must surface an \"input\" key through list-presets-handler so Team B
-   can rely on its presence for every entry."
-  (let ((json (photo-ai-lisp::list-presets-handler)))
-    (dolist (name '("hello" "skills-list" "date"))
-      (5am:is (search (format nil "\"name\":\"~a\"" name) json)
-              "preset ~a missing from JSON" name))
-    ;; Each bundled preset currently has :input nil, so we must see at
-    ;; least 3 "input":null occurrences. Count them with a simple loop.
-    (let ((count 0)
-          (needle "\"input\":null")
-          (start 0))
-      (loop for pos = (search needle json :start2 start)
-            while pos do
-              (incf count)
-              (setf start (1+ pos)))
-      (5am:is (>= count 3)
-              "expected >=3 \"input\":null occurrences, got ~a" count))))
+(5am:test analyze-presets-share-group
+  "施工状況 / 出来形管理 / 品質管理 / その他 all live under group 解析."
+  (dolist (name '("施工状況" "出来形管理" "品質管理" "その他"))
+    (5am:is (equal "解析" (photo-ai-lisp::find-preset-group name))
+            "preset ~a expected group 解析" name)))
+
+(5am:test top-level-presets-have-null-group
+  "学習 と マスタ確認 はトップレベル (group=nil)。"
+  (5am:is (null (photo-ai-lisp::find-preset-group "学習")))
+  (5am:is (null (photo-ai-lisp::find-preset-group "マスタ確認"))))
+
+(5am:test analyze-presets-end-with-shared-footer
+  "DEF-ANALYZE-PRESET stitches *analyze-footer* onto each bias body so
+   the chat-fallback hint and master-not-selected hint are present in
+   every 解析 preset. Pinning the footer suffix prevents drift between
+   bias edits and the shared text."
+  (let ((suffix photo-ai-lisp::*analyze-footer*))
+    (dolist (name '("施工状況" "出来形管理" "品質管理" "その他"))
+      (let* ((input (photo-ai-lisp::find-preset-input name))
+             (tail-start (- (length input) (length suffix))))
+        (5am:is (and (>= tail-start 0)
+                     (string= input suffix :start1 tail-start))
+                "preset ~a does not end with *analyze-footer*" name)))))
+
+(5am:test bundled-presets-declaration-order
+  "Menu layout is server-driven — list-preset-names must hand back the
+   exact order the spec mandates: 学習 → 4×解析 → マスタ確認."
+  (let ((names (photo-ai-lisp::list-preset-names)))
+    (5am:is (equal *bundled-preset-names* names)
+            "preset order mismatch: got ~a" names)))
 
 (5am:test bundled-presets-emit-group-key-in-json
-  "#38 Team C — every bundled preset must surface a \"group\" key
-   through list-presets-handler. The 3 legacy presets (hello,
-   skills-list, date) are top-level so their group is null. Content
-   swap with real :group values lands in a later commit — this test
-   guards the schema shape, not the specific group labels."
+  "JSON contract: 4 解析 presets surface group=\"解析\", the other 2
+   surface group=null. Pinning the count guards both the shape and
+   the bucketing distribution."
   (let ((json (photo-ai-lisp::list-presets-handler)))
-    (let ((count 0)
-          (needle "\"group\":null")
+    (let ((null-count 0)
+          (kaiseki-count 0)
+          (null-needle "\"group\":null")
+          (kaiseki-needle "\"group\":\"解析\"")
           (start 0))
-      (loop for pos = (search needle json :start2 start)
-            while pos do
-              (incf count)
-              (setf start (1+ pos)))
-      (5am:is (>= count 3)
-              "expected >=3 \"group\":null occurrences, got ~a" count))))
+      (loop for pos = (search null-needle json :start2 start)
+            while pos do (incf null-count) (setf start (1+ pos)))
+      (setf start 0)
+      (loop for pos = (search kaiseki-needle json :start2 start)
+            while pos do (incf kaiseki-count) (setf start (1+ pos)))
+      (5am:is (= 2 null-count)
+              "expected 2 \"group\":null entries, got ~a" null-count)
+      (5am:is (= 4 kaiseki-count)
+              "expected 4 \"group\":\"解析\" entries, got ~a"
+              kaiseki-count))))
