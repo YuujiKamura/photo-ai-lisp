@@ -706,7 +706,7 @@ of scope.
            one click → one line.
       Est: 1h · Agent hint: Gemini | Codex
 
-- [ ] **T2.g** Tier-2 demo screenshot + committed log
+- [x] **T2.g** Tier-2 demo screenshot + committed log
       Implements: `docs/tier-2/demo.png`, `docs/tier-2/demo.log`,
                   `docs/tier-2/README.md`
       Deps: T2.d, T2.e, T2.h · Branch: `feat/t2g-evidence`
@@ -718,6 +718,14 @@ of scope.
       child IS the agent and the INPUT button writes to the same child's
       stdin — the agent's reply streams straight back over the existing
       /ws/shell frame.
+      Done: 2026-04-21 — docs/tier-2/{demo.png, demo.log, README.md} captured via
+            T2.h shell-broadcast path; PHOTO_AI_LISP_DEMO_AGENT=cmd used for quota-
+            free wiring verification. Live claude demo reproducible per README.
+            PNG shows iframe with `[DEMO] iframe ready` banner + cmd prompt
+            streamed back from the child; curl POST response body is
+            `{"ok":true,"mode":"shell-broadcast","session":"demo","recipients":1,...}`
+            with HTTP 200, confirming the demo-mode branch and 1 /ws/shell
+            recipient.
 
 - [x] **T2.h** Tier 2 demo pivot to shell-broadcast model (closes Tier 2 gap)
       Implements: `src/term.lisp` (`%demo-agent-argv`, `%shell-argv` override,

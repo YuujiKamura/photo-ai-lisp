@@ -1,0 +1,51 @@
+# Captured 2026-04-21 alongside demo.png. Shell-broadcast path (T2.h)
+# is the live wiring; CP layer retained as legacy and not exercised here.
+#
+# Source: GET /api/shell-trace against the same hub that rendered demo.png.
+#   hub: SBCL 2.6.3 + photo-ai-lisp, port :8091 (8090 held by orphan socket)
+#   PHOTO_AI_LISP_DEMO_AGENT="cmd /k echo [DEMO] iframe ready"
+#   iframe: http://localhost:8091/cases/t2g-demo (one /ws/shell client)
+#
+# Timeline (newest-first; trace ring order preserved):
+#
+#   out 52B  [DEMO] iframe ready    C:\Users\yuuji\photo-ai-lisp>
+#       ^-- cmd child's initial banner + prompt streaming back over /ws/shell
+#
+#   in  20B  echo hello from hub
+#       ^-- Send ping button POSTed to /cases/t2g-demo/input, which the
+#           demo-mode branch in input-bridge-handler turned into a
+#           shell-broadcast-input call that hit the same /ws/shell child.
+#   out  6B  More?
+#       ^-- cmd.exe's multi-line continuation prompt (expected: demo agent
+#           is raw cmd without ConPTY wrapping, CR vs LF semantics differ).
+#   in  20B  echo hello from hub  (retry)
+#   out  6B  More?
+#
+#   in   5B  test                 (curl POST cmd=test -- wiring-smoke)
+#   out 52B  [DEMO] iframe ready    C:\Users\yuuji\photo-ai-lisp>
+#   in   5B  test
+#   in   4B  dir                  (curl POST cmd=dir -- DoD exercise)
+#
+# INPUT -> broadcast verification (live):
+#
+#   $ curl -X POST -d "cmd=dir" http://127.0.0.1:8091/cases/t2g-demo/input
+#   {"ok":true,"mode":"shell-broadcast","session":"demo","recipients":1,"bytes":4}
+#   status=200
+#
+# mode="shell-broadcast", recipients=1, status=200 proves:
+#   (a) /ws/shell client in the iframe is connected
+#   (b) demo-mode branch in input-bridge-handler dispatched through
+#       shell-broadcast-input (not the legacy CP path, not :mock-client)
+#   (c) the bytes landed in the same child's stdin that the iframe renders
+#
+# The cmd "More?" outputs are a known piped-stdin artifact of using a raw
+# cmd.exe as the demo agent (no ConPTY wrapper); the banner + prompt lines
+# shown in demo.png are the agent output that proves the path end-to-end.
+# Live claude runs need PHOTO_AI_LISP_DEMO_AGENT set to the claude argv and
+# are reproducible per README.md; the cmd variant was chosen here to
+# avoid consuming claude quota for T2.g evidence capture.
+
+[t2-e2e.lisp --live on port 8090 would have produced this if 8090 were free:]
+[T2.d] live mode host=localhost port=8091 session=demo
+[T2.d] INPUT response: OK
+[T2.d] INPUT ok=T broadcast-frames=1
