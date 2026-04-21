@@ -1,78 +1,55 @@
-=== T1.b CP round-trip verification ===
-Date: 2026-04-21
-Target: ws://127.0.0.1:8080/ws (deckpilot daemon, PID 47400)
-Client: photo-ai-lisp src/cp-client.lisp (connect-cp) via websocket-driver
-Session under test: ghostty-30028 (spawned via C:/Users/yuuji/ghostty-win/zig-out-winui3/bin/ghostty.exe)
-Runner: scripts/cp-smoke.lisp
-SBCL: /c/Users/yuuji/SBCLLocal/PFiles/Steel Bank Common Lisp/sbcl.exe
-
-Invocation: sbcl --script scripts/cp-smoke.lisp ghostty-30028
-Exit code: 0 (all 4 verbs :ok t)
-
-Verdict: **PASS** — LIST / STATE / INPUT / SHOW all returned :ok t against a live session.
-
----
-
 --- T1.b CP SMOKE START ---
-target-session: ghostty-30028
 CONNECT: OK
 
 >>> LIST
 [LIST] ok=T resp=(:CMD "LIST" :OK T :ERROR NIL :DATA
-                  #(<31 hash-tables, one per live deckpilot session>)
+                  #(#<HASH-TABLE :TEST EQUAL :COUNT 6 {1104A55343}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104A55DF3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104A568A3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104A57353}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104A57E03}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BE3863}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BE4313}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BE4DC3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BE5873}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BE6323}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BE6DD3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BE7883}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF0343}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF0DF3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF18A3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF2353}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF2E03}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF38B3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF4363}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF4E13}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF58C3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF6373}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF6E23}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF78D3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF8383}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF8E33}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BF98E3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BFA393}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BFAE43}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BFB8F3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BFC3A3}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BFCE53}>
+                    #<HASH-TABLE :TEST EQUAL :COUNT 6 {1104BFD903}>)
                   :STATUS NIL :MODE NIL :MESSAGE NIL)
+target-session: ghostty-44052
 
->>> STATE ghostty-30028
+>>> STATE ghostty-44052
 [STATE] ok=T resp=(:CMD "STATE" :OK T :ERROR NIL :DATA NIL :STATUS "idle" :MODE
                    NIL :MESSAGE NIL)
 
->>> INPUT echo t1b-ping -> ghostty-30028
+>>> INPUT echo t1b-ping -> ghostty-44052
 [INPUT] ok=T resp=(:CMD "INPUT" :OK T :ERROR NIL :DATA "submit_ok" :STATUS
-                   "ok_cleared|203ms" :MODE NIL :MESSAGE NIL)
+                   "ok_cleared|210ms" :MODE NIL :MESSAGE NIL)
 
->>> SHOW tail n=5 <- ghostty-30028
+>>> SHOW tail n=5 <- ghostty-44052
 [SHOW] ok=T resp=(:CMD "SHOW" :OK T :ERROR NIL :DATA
-                  "TWljcm9zb2Z0IFdpbmRvd3MgW1ZlcnNpb24gMTAuMC4yNjIwMC44MjQ2XQooYykgTWljcm9zb2Z0IENvcnBvcmF0aW9uLiBBbGwgcmlnaHRzIHJlc2VydmVkLgoKQzpcVXNlcnNceXV1amk+ZWNobyB0MWItcGluZwp0MWItcGluZwoKQzpcVXNlcnNceXV1amk+ZWNobyB0MWItcGluZwp0MWItcGluZwoKQzpcVXNlcnNceXV1amk+ZWNobyB0MWItcGluZwp0MWItcGluZwoKQzpcVXNlcnNceXV1amk+"
+                  "ICAgICAgICAgK25vaXNlOiBgVVNPQ0tFVDpDT05ORUNUSU9OLVJFRlVTRUQtRVJST1JgIGZyb20gd2FrZS1mb3Itc2h1dGRvd24gYW5kIGBDUCBjb25uZWN0aW9uIGZhaWxlZGAgZnJvbSBjcC1jbGllbnQtdCAgICAgICAKICAgICAgICAgK2VzdHMgbW9jayBwYXRoIOKAlCBib3RoIHByZS1leGlzdGluZywgaGFuZGxlZCBieSBgaGFuZGxlci1jYXNlYC9gd2FybmAsIG5vdCBjb3VudGVkIGFzIGNoZWNrIGZhaWx1cmVzLiBNb25pdG9yICAgICAgIAogICAgICAgICArIGFscmVhZHkgc3RvcHBlZCBlYXJsaWVyICh0YXNrIGJwd3ZydjJndykuIE5vIGNvbW1pdHMgZnJvbSB0aGlzIHNhbml0eSBwYXNzIChyZXBvcnQgbGl2ZXMgaW4gZ2l0aWdub3JlZCBgLmRpICAgICAgIAogICAgICAgICArc3BhdGNoL2ApLiBJZGxlLiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAxNwoK4pePIFNhbml0eSBwYXNzIHJlc3VsdDoKCiAgMTE1IC8gMTA5IC8gMCAvIDYg4oCUIG1hdGNoZXMgYnJpZWYgYmFzZWxpbmUgZXhhY3RseS4gTm8gcmVncmVzc2lvbi4gNiBza2lwcyBhcmUgdGhlIGtub3duIFdpbmRvd3MgZW52IHNraXBzIChVTklYLUVDSE8sICAgICAKICBTSEVMTC1FQ0hPLVJPVU5ELVRSSVAsIFBST0MtU1BBV04tKiBsaWZlY3ljbGUgdGVzdHMpLiBObyBtb25pdG9yIHBlbmRpbmcg4oCUIGFscmVhZHkgc3RvcHBlZC4gTm8gY29tbWl0cyBtYWRlIChyZXBvcnQgaXMgaW4gIAogIGdpdGlnbm9yZWQgLmRpc3BhdGNoLykuIElkbGUuCgrinLsgQ29naXRhdGVkIGZvciAybSAyN3MKCuKdryBlY2hvIHQxYi1waW5nCgril48gdDFiLXBpbmcKCiAgVGVhbSBUeTEgaWRsZS4gUFIgIzI0IG9wZW4sIHRlc3QgYmFzZWxpbmUgMTE1LzEwOS8wLzYgbWFpbnRhaW5lZCwgbm8gcGVuZGluZyB3b3JrLgoK4p2vIGVjaG8gdDFiLXBpbmcgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAKKiBOZXN0aW5n4oCmICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogIArilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAK4p2vwqAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAK4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACiAgW09NQyM0LjEwLjFdIHwgNWg6MjAlKih+Mmg1OG0pIHdrOjclKih+NmQxMWgpIHNuOjAlKih+NmQyMmgpIHwgdGhpbmtpbmcgfCBzZXNzaW9uOjQwbSB8IHNraWxsOmRlY2twaWxvdCB8IGN0eDoyNCUgfCBUOjUx4oCmCiAg4o+14o+1IGJ5cGFzcyBwZXJtaXNzaW9ucyBvbiAoc2hpZnQrdGFiIHRvIGN5Y2xlKQ=="
                   :STATUS "active" :MODE "buffer" :MESSAGE NIL)
 
 --- T1.b CP SMOKE END --- failures=0
-
----
-
-SHOW :DATA base64-decoded (prose-form proof the echo landed in the child shell):
-
-    Microsoft Windows [Version 10.0.26200.8246]
-    (c) Microsoft Corporation. All rights reserved.
-
-    C:\Users\yuuji>echo t1b-ping
-    t1b-ping
-
-    C:\Users\yuuji>echo t1b-ping
-    t1b-ping
-
-    C:\Users\yuuji>echo t1b-ping
-    t1b-ping
-
-    C:\Users\yuuji>
-
-The triple-echo reflects three successive smoke runs against the same live
-session within the same minute — INPUT reached the cmd.exe child, stdout was
-captured by deckpilot's ring buffer, SHOW pulled it back. One-shot
-(single-run) observation was captured identically on the first run; the log
-shows the third run to prove idempotency.
-
---- notes ---
-* LIST :DATA shape: vector of 31 hash-tables (count matches `deckpilot list`
-  output while test ran). Inner contents elided to keep this log readable;
-  the :OK T bit is the DoD for LIST.
-* STATE returns :OK T :STATUS "idle" because ghostty-30028 is an idle
-  cmd.exe child — compare T1.a where the stale session ID returned
-  :OK NIL :ERROR "session not found: ...".
-* INPUT :DATA "submit_ok" + :STATUS "ok_cleared|201ms" is deckpilot's
-  successful-submit acknowledgement. The trailing number is submit latency
-  in ms.
-* SHOW :STATUS flips to "active" while the child is still rendering the
-  echo; a second SHOW a moment later would report "idle".
-* Client-side "Cannot destroy thread" noise from wsd on disconnect is
-  swallowed by `ignore-errors` in scripts/cp-smoke.lisp (same benign cleanup
-  noted in T1.a ws-handshake.log).
