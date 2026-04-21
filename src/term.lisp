@@ -589,6 +589,21 @@ Returns the number of clients closed."
     fitAddon.fit();
     fitAddon.observeResize();
 
+    // Ctrl+wheel → font zoom (Windows Terminal parity). ghostty-web's
+    // customWheelEventHandler returns truthy to consume, falsy to fall
+    // through to default scrollback. We only consume when ctrlKey is
+    // held; plain wheel keeps scrolling as usual.
+    term.attachCustomWheelEventHandler((e) => {
+      if (!e.ctrlKey) return false;
+      const current = term.options.fontSize || 14;
+      const next = Math.max(6, Math.min(40, current + (e.deltaY < 0 ? 1 : -1)));
+      if (next !== current) {
+        term.options.fontSize = next;
+        fitAddon.fit();
+      }
+      return true;
+    });
+
     // --- IME reposition (issue #36, v2) ---
     // ghostty-web already owns an internal textarea (terminal.ts:49,
     // public textarea?: HTMLTextAreaElement) and wires compositionend →
