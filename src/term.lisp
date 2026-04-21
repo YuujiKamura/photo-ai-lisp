@@ -55,39 +55,74 @@
   (bordeaux-threads:with-lock-held (*shell-clients-lock*)
     (setf *shell-clients* (remove client *shell-clients*))))
 
+(defun %utf8-encode-char (code buf)
+  "Append the UTF-8 byte sequence for CODE-POINT CODE to adjustable byte
+   vector BUF. Handles the full Unicode range (U+0080..U+10FFFF).
+   Chars <= 0x7F are handled by the caller for the LF→CR rewrite and
+   latin-1 passthrough path, so this helper only needs to cover multi-byte
+   sequences starting at U+0080."
+  (cond
+    ((< code #x80)
+     ;; Caller already handled 0x00-0x7F via the latin-1 passthrough path.
+     ;; Reached here only if a caller bypasses the guard; emit as-is.
+     (vector-push-extend code buf))
+    ((< code #x800)
+     ;; 2-byte: 110xxxxx 10xxxxxx
+     (vector-push-extend (logior #xC0 (ash code -6)) buf)
+     (vector-push-extend (logior #x80 (logand code #x3F)) buf))
+    ((< code #x10000)
+     ;; 3-byte: 1110xxxx 10xxxxxx 10xxxxxx
+     (vector-push-extend (logior #xE0 (ash code -12)) buf)
+     (vector-push-extend (logior #x80 (logand (ash code -6) #x3F)) buf)
+     (vector-push-extend (logior #x80 (logand code #x3F)) buf))
+    (t
+     ;; 4-byte: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+     (vector-push-extend (logior #xF0 (ash code -18)) buf)
+     (vector-push-extend (logior #x80 (logand (ash code -12) #x3F)) buf)
+     (vector-push-extend (logior #x80 (logand (ash code -6) #x3F)) buf)
+     (vector-push-extend (logior #x80 (logand code #x3F)) buf))))
+
 (defun %normalize-child-input (s)
-  "Normalize S for writing to the child's stdin. Three transforms:
+  "Normalize S for writing to the child's stdin. Transforms:
 
-    - Drop any char whose code does not fit latin-1 (>#xFF). The
-      child stream round-trips bytes via :external-format :latin-1
-      (see spawn-child docstring), so everything outside that range
-      has no lossless representation and must be filtered.
+    - Chars <= 0x7F (ASCII/C0): LF (10) is translated to CR (13) so that
+      cmd.exe under our ConPTY bridge interprets Enter correctly.
+      Consecutive CRs are collapsed to one to prevent double-Enter
+      (see commit de778f7). All other ASCII/C0 bytes pass through as-is.
 
-    - Translate LF (code 10) to CR (code 13). When the child is
-      running under our ConPTY bridge, cmd.exe only treats CR as
-      the Enter key — bare LF is just a control char it buffers and
-      never executes. Callers on the WebSocket side send LF because
-      hunchensocket crashes 1011 on a bare-CR text frame (see the
-      term.onData replace in /shell), so we flip it back here.
+    - Chars 0x80-0xFF (latin-1 supplement): pass through as their byte
+      values unchanged (latin-1 bijection).
 
-    - Collapse any run of consecutive CRs down to a single CR. Any
-      caller that terminates a line with CRLF, LFLF, or CRCR ends up
-      emitting two CRs otherwise — and when a set /p (or any other
-      single-line reader) is live on the child, the second CR silently
-      answers it with empty input. See the picker-inject race fixed in
-      commit de778f7. Making the normalizer idempotent here defends
-      every caller against that class at once, so callers don't need
-      to memorize which terminator the wire expects."
+    - Chars > 0xFF (CJK, emoji, …): UTF-8 encoded as multi-byte byte
+      sequences and appended directly. The child stdin stream uses
+      :external-format :latin-1 which is byte-transparent via SBCL's
+      bivalent fd-stream — write-sequence of the resulting (unsigned-byte 8)
+      vector delivers the UTF-8 octets to the child verbatim.
+      The ConPTY bridge passes them through, and cmd.exe / claude etc.
+      receive the correct UTF-8 encoding of the IME-committed text."
   (let ((buf (make-array (length s) :element-type '(unsigned-byte 8)
                                     :fill-pointer 0 :adjustable t))
         (prev-cr nil))
     (loop for c across s
           for code = (char-code c)
-          when (<= code #xFF)
-            do (let ((b (if (= code 10) 13 code)))
-                 (unless (and prev-cr (= b 13))
-                   (vector-push-extend b buf))
-                 (setf prev-cr (= b 13))))
+          do (cond
+               ;; NUL / control chars that have no sensible terminal meaning
+               ;; (but leave C0 alone except the LF→CR rewrite below)
+               ((= code 0)
+                ;; skip NUL — it would terminate C strings in the child
+                nil)
+               ;; ASCII range (0x01-0xFF): apply LF→CR and CR-dedup
+               ((<= code #xFF)
+                (let ((b (if (= code 10) 13 code)))
+                  (unless (and prev-cr (= b 13))
+                    (vector-push-extend b buf))
+                  (setf prev-cr (= b 13))))
+               ;; Above latin-1: UTF-8 encode.
+               ;; Reset prev-cr so a CR immediately before a CJK char does
+               ;; not get coalesced with a later CR.
+               (t
+                (setf prev-cr nil)
+                (%utf8-encode-char code buf))))
     buf))
 
 (defun shell-broadcast-input (text)
@@ -505,6 +540,7 @@ Returns the number of clients closed."
       font-kerning: none;
       text-rendering: geometricPrecision;
     }
+    #shell-root { position: relative; width: 100%; height: 100%; }
     #terminal { width: 100%; height: 100%; }
     /* Snap the WASM renderer's backing canvas to device pixels so row
        height doesn't drift by a fractional pixel across scrolls. */
@@ -512,10 +548,38 @@ Returns the number of clients closed."
       image-rendering: crisp-edges;
       transform: translateZ(0);
     }
+    /* IME sink: transparent overlay textarea that captures CJK composition
+       events. It sits above the canvas (z-index) so that when focused it
+       receives compositionstart/end from the OS IME. Opacity 0 + no caret
+       keeps it invisible while the OS-native IME popup is still positioned
+       relative to it (browsers respect the element bounding box for IME
+       popup placement even when opacity is 0). pointer-events:none on the
+       textarea itself prevents it from eating mouse clicks meant for the
+       canvas — focus is set programmatically on pointerdown. */
+    #ime-sink {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      background: transparent;
+      border: none;
+      outline: none;
+      resize: none;
+      padding: 0;
+      margin: 0;
+      z-index: 10;
+      caret-color: transparent;
+      pointer-events: none;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
-  <div id=\"terminal\"></div>
+  <div id=\"shell-root\">
+    <div id=\"terminal\"></div>
+    <textarea id=\"ime-sink\" aria-hidden=\"true\" autocorrect=\"off\"
+              autocapitalize=\"off\" spellcheck=\"false\"
+              tabindex=\"-1\"></textarea>
+  </div>
   <script type=\"module\">
     // Renderer: ghostty-web WASM bundle served from /vendor/ by the Lisp hub.
     // PTY lives on the Lisp side at /ws/shell. Keep the protocol dumb so
@@ -551,12 +615,65 @@ Returns the number of clients closed."
     fitAddon.fit();
     fitAddon.observeResize();
 
-    // Ghostty-web renders into a canvas; without explicit focus the iframe
-    // swallows keystrokes. Re-grab focus on any pointer event so clicking
-    // anywhere in the terminal area always routes keys to the PTY.
+    // --- IME overlay textarea (issue #36) ---
+    // ghostty-web's hidden textarea has clip-path:inset(50%) which hides
+    // the element entirely including the caret anchor; some OS IME
+    // implementations position the candidate popup relative to the focused
+    // element's bounding rect and end up placing it off-screen (or simply
+    // not attaching because the rect is empty).  We add a second, full-size
+    // overlay textarea that the IME can use as its anchor.  It is transparent
+    // and non-interactive for mouse events, so the canvas still receives
+    // pointer events and ghost-web's own input path keeps working for ASCII.
+    //
+    // Dual-path guarantee:
+    //   IME path:   compositionend on ime-sink → ws.send(e.data)
+    //   ASCII path: term.onData               → ws.send(data)  [unchanged]
+    // There is no double-send risk: compositionend does not re-fire on
+    // term.onData because ghostty-web guards keydown with isComposing.
+    const ime = document.getElementById('ime-sink');
+    let composing = false;
+
+    ime.addEventListener('compositionstart', () => { composing = true; });
+    ime.addEventListener('compositionupdate', () => { /* preedit: OS popup handles it */ });
+    ime.addEventListener('compositionend', (e) => {
+      composing = false;
+      const s = e.data || '';
+      if (s && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(s.replace(/\\r/g, '\\n'));
+      }
+      ime.value = '';
+    });
+    // Direct (non-IME) input that lands on ime-sink when it has focus
+    // (e.g. ASCII keys on some mobile keyboards that route through beforeinput
+    // rather than keydown): forward to WS and clear value to prevent
+    // accumulation.  Guard on !isComposing to avoid double-send with the
+    // compositionend handler above.
+    ime.addEventListener('input', (e) => {
+      if (e.isComposing || composing) return;
+      const t = ime.value;
+      if (t && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(t.replace(/\\r/g, '\\n'));
+      }
+      ime.value = '';
+    });
+
+    // On any pointer-down in the terminal area: give focus to the ime-sink
+    // textarea (so IME attaches to it) and also call term.focus() so
+    // ghostty-web's ASCII keydown path remains active via the container.
+    // The textarea has pointer-events:none so this listener must be on the
+    // shell-root wrapper, not on the textarea itself.
+    document.getElementById('shell-root').addEventListener('pointerdown', () => {
+      term.focus();          // ghostty-web keeps ASCII input working
+      ime.focus();           // IME now anchors to the full-size overlay
+    });
+    window.addEventListener('focus', () => {
+      term.focus();
+      ime.focus();
+    });
+
+    // Initial focus
     term.focus();
-    container.addEventListener('pointerdown', () => term.focus());
-    window.addEventListener('focus', () => term.focus());
+    ime.focus();
 
     let ws = null, reconnectDelay = 500;
     function connect() {
