@@ -401,6 +401,35 @@ Returns the number of clients closed."
         (close (slot-value client 'hunchensocket::output-stream) :abort t)))
     (length snapshot)))
 
+;;; Resize protocol: emit 7-byte OOB magic frame to the bridge stdin.
+;;; Frame layout: SOH(0x01) 'R'(0x52) 'Z'(0x5A) cols-lo cols-hi rows-lo rows-hi
+;;; (cols and rows are u16 little-endian). The bridge's resizeAwareCopy
+;;; intercepts this sequence, calls ResizePseudoConsole, and swallows the 7
+;;; bytes so they never reach the child process.
+(defun shell-resize (child cols rows)
+  "Send a resize frame to CHILD's stdin. COLS and ROWS are positive integers.
+   Returns T on success, NIL if the child is absent or write fails."
+  (when (and child (plusp cols) (plusp rows))
+    (let ((frame (make-array 7 :element-type '(unsigned-byte 8))))
+      (setf (aref frame 0) #x01)   ; SOH
+      (setf (aref frame 1) #x52)   ; 'R'
+      (setf (aref frame 2) #x5A)   ; 'Z'
+      ;; cols u16 LE
+      (setf (aref frame 3) (logand cols #xFF))
+      (setf (aref frame 4) (logand (ash cols -8) #xFF))
+      ;; rows u16 LE
+      (setf (aref frame 5) (logand rows #xFF))
+      (setf (aref frame 6) (logand (ash rows -8) #xFF))
+      (handler-case
+          (progn
+            (write-sequence frame (child-process-stdin child))
+            (finish-output (child-process-stdin child))
+            t)
+        (error (e)
+          (format *error-output* "RESIZE-ERR cols=~a rows=~a err=~a~%" cols rows e)
+          (finish-output *error-output*)
+          nil)))))
+
 ;;; 2b — text message received: write to child stdin.
 ;;; hunchensocket hands us the already-UTF-8-decoded string. If the frame
 ;;; contained bytes that can't round-trip through latin-1 (what the child
@@ -408,6 +437,9 @@ Returns the number of clients closed."
 ;;; before the write and log any residual failure visibly — silent
 ;;; ignore-errors here masked real bugs (WS died immediately after an
 ;;; un-encodable byte hit the child stream).
+;;;
+;;; Resize messages arrive as JSON: {"type":"resize","cols":N,"rows":M}
+;;; They are dispatched to shell-resize and do NOT touch child stdin directly.
 (defmethod hunchensocket:text-message-received ((resource shell-resource)
                                                   (client   shell-client)
                                                   message)
@@ -415,13 +447,31 @@ Returns the number of clients closed."
   ;; connection with status 1011 on ANY unhandled error here. Scrub +
   ;; handler-case so a single bad byte never drops the whole session.
   (handler-case
-      (progn
-        (shell-trace-record :in message)
-        (let ((child (shell-client-child client)))
-          (when child
-            (let ((safe (%normalize-child-input message)))
-              (write-sequence safe (child-process-stdin child))
-              (finish-output (child-process-stdin child))))))
+      (let ((child (shell-client-child client)))
+        ;; Attempt to parse as JSON for typed control messages.
+        ;; shasht:read-json returns NIL on parse failure (not a control msg).
+        (let* ((parsed (handler-case
+                           (shasht:read-json (make-string-input-stream message))
+                         (error () nil)))
+               (msg-type (and (hash-table-p parsed)
+                              (gethash "type" parsed))))
+          (cond
+            ;; {"type":"resize","cols":N,"rows":M}
+            ((equal msg-type "resize")
+             (let ((cols (gethash "cols" parsed))
+                   (rows (gethash "rows" parsed)))
+               (when (and cols rows (plusp cols) (plusp rows))
+                 (shell-trace-record :meta
+                                     (format nil "[resize cols=~a rows=~a]" cols rows))
+                 (when child
+                   (shell-resize child (floor cols) (floor rows))))))
+            ;; Not a control message — forward as terminal input.
+            (t
+             (shell-trace-record :in message)
+             (when child
+               (let ((safe (%normalize-child-input message)))
+                 (write-sequence safe (child-process-stdin child))
+                 (finish-output (child-process-stdin child))))))))
     (error (e)
       (format *error-output* "WS-IN-ERR type=~a msg=~a~%" (type-of e) e)
       (finish-output *error-output*))))
@@ -471,7 +521,9 @@ Returns the number of clients closed."
     // PTY lives on the Lisp side at /ws/shell. Keep the protocol dumb so
     // /api/inject and the picker auto-inject (term.lisp client-connected)
     // both continue to reach this PTY without a separate node daemon.
-    import { init, Terminal } from '/vendor/ghostty-web.js';
+    // FitAddon is exported from the same bundle and wires ResizeObserver
+    // to call term.resize() whenever the container dimensions change.
+    import { init, Terminal, FitAddon } from '/vendor/ghostty-web.js';
     await init();
 
     // Font stack aimed at WT-parity: Cascadia (ships with Windows
@@ -479,21 +531,26 @@ Returns the number of clients closed."
     // as the CJK fallback that keeps ambiguous-width glyphs on a
     // full cell, then Consolas as the universal Windows monospace.
     //
-    // Dimensions locked to conpty-bridge's CONPTY_COLS/ROWS defaults
-    // (80x24). FitAddon is intentionally NOT loaded: the bridge has no
-    // resize protocol, so claude/gemini would draw at 80 cols while
-    // the browser sized itself to the container — absolute cursor
-    // moves would land at the wrong column and the input row would
-    // 'float' mid-screen. Keeping both sides at 80x24 makes every
-    // escape sequence land where the TUI intended.
+    // Initial size is deliberately unconstrained (cols/rows omitted so
+    // the Terminal defaults) — FitAddon will compute and apply the real
+    // dimensions from the container immediately after open().
+
     const term = new Terminal({
-      cols: 80, rows: 24,
       fontFamily: \"'Cascadia Mono', 'Cascadia Code', 'Meiryo UI', Consolas, 'Lucida Console', monospace\",
       fontSize: 14,
       theme: { background: '#1e1e1e', foreground: '#d4d4d4' },
     });
     const container = document.getElementById('terminal');
     await term.open(container);
+
+    // FitAddon: measures the container and calls term.resize() to match.
+    // observeResize() wires a ResizeObserver so every future browser-window
+    // resize also fires fit().
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    fitAddon.fit();
+    fitAddon.observeResize();
+
     // Ghostty-web renders into a canvas; without explicit focus the iframe
     // swallows keystrokes. Re-grab focus on any pointer event so clicking
     // anywhere in the terminal area always routes keys to the PTY.
@@ -507,7 +564,15 @@ Returns the number of clients closed."
       // Binary frames carry raw PTY octets so UTF-8 multi-byte sequences
       // (box drawing, Japanese, emoji) reach the VT parser intact.
       ws.binaryType = 'arraybuffer';
-      ws.onopen = () => { reconnectDelay = 500; };
+      ws.onopen = () => {
+        reconnectDelay = 500;
+        // On (re)connect, immediately push the current terminal dimensions
+        // to the bridge so the ConPTY and TUI stay in sync with the browser.
+        const { cols, rows } = term;
+        if (cols && rows) {
+          ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+        }
+      };
       ws.onmessage = (e) => {
         term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data));
       };
@@ -522,6 +587,15 @@ Returns the number of clients closed."
       ws.onerror = () => {};
     }
     connect();
+
+    // Forward terminal resize events to the bridge via the OOB protocol.
+    // The bridge's resizeAwareCopy detects the JSON control message,
+    // calls ResizePseudoConsole, and strips the bytes from the child's stdin.
+    term.onResize(({ cols, rows }) => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+      }
+    });
 
     // No client-side local echo. cmd.exe in piped-stdin mode still
     // echoes every command line it reads before executing it, so

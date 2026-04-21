@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"io"
 	"os"
@@ -226,5 +227,180 @@ func TestUnbufferedCopy_BlocksOnSlowReader(t *testing.T) {
 		t.Fatal("unbufferedCopy returned on a never-EOF reader; it must block")
 	case <-time.After(80 * time.Millisecond):
 		// expected: still blocking
+	}
+}
+
+// ---- resizeAwareCopy helpers -----------------------------------------------
+
+// mockResizable records Write calls and Resize calls for assertion.
+type mockResizable struct {
+	written []byte
+	resizes []resizeFrame
+	writeErr error
+}
+
+func (m *mockResizable) Write(p []byte) (int, error) {
+	if m.writeErr != nil {
+		return 0, m.writeErr
+	}
+	m.written = append(m.written, p...)
+	return len(p), nil
+}
+
+func (m *mockResizable) Resize(width, height int) error {
+	m.resizes = append(m.resizes, resizeFrame{cols: uint16(width), rows: uint16(height)})
+	return nil
+}
+
+// buildResizeFrame builds the 7-byte OOB frame as the Lisp side would emit.
+func buildResizeFrame(cols, rows uint16) []byte {
+	b := make([]byte, 7)
+	b[0] = resizeMagic[0]
+	b[1] = resizeMagic[1]
+	b[2] = resizeMagic[2]
+	binary.LittleEndian.PutUint16(b[3:5], cols)
+	binary.LittleEndian.PutUint16(b[5:7], rows)
+	return b
+}
+
+// ---- resizeAwareCopy tests -------------------------------------------------
+
+// A bare resize frame with nothing else: no bytes forwarded, one Resize call.
+func TestResizeAwareCopy_SingleResizeFrame(t *testing.T) {
+	frame := buildResizeFrame(120, 40)
+	mock := &mockResizable{}
+	n, err := resizeAwareCopy("t", mock, bytes.NewReader(frame))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("frame bytes must not be forwarded to child, got %d forwarded", n)
+	}
+	if len(mock.written) != 0 {
+		t.Fatalf("expected no write-through, got %q", mock.written)
+	}
+	if len(mock.resizes) != 1 {
+		t.Fatalf("expected 1 Resize call, got %d", len(mock.resizes))
+	}
+	if mock.resizes[0].cols != 120 || mock.resizes[0].rows != 40 {
+		t.Fatalf("Resize got cols=%d rows=%d, want 120x40", mock.resizes[0].cols, mock.resizes[0].rows)
+	}
+}
+
+// Normal text with no magic must pass through unchanged.
+func TestResizeAwareCopy_PlainTextPassthrough(t *testing.T) {
+	mock := &mockResizable{}
+	text := "hello\r\nworld\r\n"
+	n, err := resizeAwareCopy("t", mock, strings.NewReader(text))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if n != int64(len(text)) {
+		t.Fatalf("want %d bytes forwarded, got %d", len(text), n)
+	}
+	if string(mock.written) != text {
+		t.Fatalf("want %q, got %q", text, mock.written)
+	}
+	if len(mock.resizes) != 0 {
+		t.Fatalf("expected no Resize calls, got %d", len(mock.resizes))
+	}
+}
+
+// Text before and after a resize frame: both parts forwarded, frame swallowed.
+func TestResizeAwareCopy_TextAroundResizeFrame(t *testing.T) {
+	prefix := []byte("before")
+	frame := buildResizeFrame(200, 50)
+	suffix := []byte("after")
+	src := append(append(prefix, frame...), suffix...)
+
+	mock := &mockResizable{}
+	_, err := resizeAwareCopy("t", mock, bytes.NewReader(src))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if string(mock.written) != "beforeafter" {
+		t.Fatalf("want 'beforeafter', got %q", mock.written)
+	}
+	if len(mock.resizes) != 1 {
+		t.Fatalf("expected 1 Resize, got %d", len(mock.resizes))
+	}
+	if mock.resizes[0].cols != 200 || mock.resizes[0].rows != 50 {
+		t.Fatalf("Resize got cols=%d rows=%d, want 200x50", mock.resizes[0].cols, mock.resizes[0].rows)
+	}
+}
+
+// Multiple resize frames in sequence: each triggers a Resize, nothing forwarded.
+func TestResizeAwareCopy_MultipleResizeFrames(t *testing.T) {
+	frames := append(buildResizeFrame(80, 24), buildResizeFrame(160, 48)...)
+	mock := &mockResizable{}
+	n, err := resizeAwareCopy("t", mock, bytes.NewReader(frames))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("no bytes should be forwarded, got %d", n)
+	}
+	if len(mock.resizes) != 2 {
+		t.Fatalf("expected 2 Resize calls, got %d", len(mock.resizes))
+	}
+	if mock.resizes[0].cols != 80 || mock.resizes[0].rows != 24 {
+		t.Fatalf("first Resize: want 80x24, got %dx%d", mock.resizes[0].cols, mock.resizes[0].rows)
+	}
+	if mock.resizes[1].cols != 160 || mock.resizes[1].rows != 48 {
+		t.Fatalf("second Resize: want 160x48, got %dx%d", mock.resizes[1].cols, mock.resizes[1].rows)
+	}
+}
+
+// Partial magic (only 0x01 or 0x01 'R') must be forwarded, not swallowed.
+func TestResizeAwareCopy_PartialMagicFlushed(t *testing.T) {
+	// Send SOH then a byte that breaks the magic pattern ('X' != 'R').
+	src := []byte{0x01, 'X', 'Y'}
+	mock := &mockResizable{}
+	_, err := resizeAwareCopy("t", mock, bytes.NewReader(src))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	// All three bytes must come out unchanged.
+	if string(mock.written) != "\x01XY" {
+		t.Fatalf("partial magic must be flushed, got %q", mock.written)
+	}
+	if len(mock.resizes) != 0 {
+		t.Fatalf("no Resize expected, got %d", len(mock.resizes))
+	}
+}
+
+// SOH 'R' followed by a byte that isn't 'Z' — mismatch at byte 3.
+func TestResizeAwareCopy_PartialMagicTwoBytesMismatch(t *testing.T) {
+	src := []byte{0x01, 'R', 'X', 'Z'}
+	mock := &mockResizable{}
+	_, err := resizeAwareCopy("t", mock, bytes.NewReader(src))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if string(mock.written) != "\x01RXZ" {
+		t.Fatalf("partial magic mismatch must be flushed, got %q", mock.written)
+	}
+	if len(mock.resizes) != 0 {
+		t.Fatalf("no Resize expected, got %d", len(mock.resizes))
+	}
+}
+
+// u16 little-endian encoding validation: cols=0x0102 rows=0x0304.
+func TestResizeAwareCopy_LittleEndianDecoding(t *testing.T) {
+	// cols = 0x0102 = 258, rows = 0x0304 = 772
+	frame := []byte{0x01, 'R', 'Z', 0x02, 0x01, 0x04, 0x03}
+	mock := &mockResizable{}
+	_, err := resizeAwareCopy("t", mock, bytes.NewReader(frame))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if len(mock.resizes) != 1 {
+		t.Fatalf("expected 1 Resize, got %d", len(mock.resizes))
+	}
+	if mock.resizes[0].cols != 258 {
+		t.Fatalf("cols: want 258, got %d", mock.resizes[0].cols)
+	}
+	if mock.resizes[0].rows != 772 {
+		t.Fatalf("rows: want 772, got %d", mock.resizes[0].rows)
 	}
 }
