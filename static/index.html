@@ -261,10 +261,38 @@
   // Preset buttons: click posts to /api/inject. Server broadcasts to all
   // connected /ws/shell sessions, including the iframe below. This is the
   // same path external curl callers use — proven via inject-e2e test.
-  function runPreset(name, argv) {
-    const text = (argv || []).join(' ') + '\n';
-    fetch('/api/inject?text=' + encodeURIComponent(text))
+  //
+  // Wire contract (see .dispatch/inject-contract-audit.md): every payload
+  // terminates with a single bare LF. %normalize-child-input flips LF→CR
+  // so cmd.exe / bash sees exactly one Enter. Never emit \r\n here — that
+  // normalizes to \r\r and a trailing CR eats any live `set /p` prompt.
+  //
+  // #38 — preset.input follow-up: when a preset carries a non-null `input`
+  // string, it represents the initial prompt to feed the agent the argv
+  // just spawned (e.g. `claude --dangerously-skip-permissions`). We inject
+  // argv first, then after the agent has had a chance to come up, inject
+  // input via the same /api/inject path. There is no UI-observable
+  // ready-signal for a subprocess (picker-auto-inject uses a server-side
+  // sleep 0.4 after spawn; that signal is not exposed to the browser),
+  // so we fall back to a setTimeout. 2500ms covers Claude CLI cold-start
+  // on typical hardware with margin.
+  // TODO(#38): replace the setTimeout with a /ws/control "agent-ready"
+  // frame once the server emits one, or probe child-stdout for a known
+  // ready marker.
+  function injectText(text) {
+    return fetch('/api/inject?text=' + encodeURIComponent(text))
       .catch(err => console.error('inject failed', err));
+  }
+  function runPreset(name, argv, input) {
+    const argvText = (argv || []).join(' ') + '\n';
+    const p = injectText(argvText);
+    if (typeof input === 'string' && input.length > 0) {
+      p.then(() => {
+        setTimeout(() => {
+          injectText(input + '\n');
+        }, 2500);
+      });
+    }
   }
   // Hot-swap hook: reload presets without a full page refresh whenever the
   // server signals /api/reload (Swank-driven). Cheap polling is fine for now;
@@ -287,7 +315,7 @@
         b.className = 'btn';
         b.textContent = p.name;
         b.title = (p.argv || []).join(' ');
-        b.addEventListener('click', () => runPreset(p.name, p.argv));
+        b.addEventListener('click', () => runPreset(p.name, p.argv, p.input));
         target.appendChild(b);
       });
     } catch (_) { /* transient; retry next tick */ }
