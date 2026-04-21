@@ -2,7 +2,7 @@
   :version "0.0.1"
   :description "Lisp orchestrator for construction photo pipeline"
   :license "MIT"
-  :depends-on ("hunchentoot" "hunchensocket" "cl-who" "bordeaux-threads" "cl-base64" "websocket-driver" "shasht")
+  :depends-on ("hunchentoot" "hunchensocket" "cl-who" "bordeaux-threads" "cl-base64" "websocket-driver" "shasht" "uuid" "local-time")
   :components ((:module "src"
                 :serial t
                 :components ((:file "package")
