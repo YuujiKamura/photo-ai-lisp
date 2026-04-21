@@ -295,22 +295,11 @@
       .catch(err => console.error('inject failed', err));
   }
   function runPreset(name, argv, input) {
-    // Ask the user whether this click should reset the session.
-    //   OK     → full spawn: inject argv, wait 2.5s, then inject input.
-    //            Use when the shell is bare or the current agent is stale.
-    //   Cancel → inject only input. Use when an agent is already running
-    //            and the click is meant as a skill/prompt switch.
-    const reset = window.confirm(
-      `[${name}]\n\nOK:    シェル/エージェントを新規起動 (argv + 初期プロンプト)\nｷｬﾝｾﾙ: 現在のエージェントに追加プロンプトだけ送る`
-    );
-    const hasInput = typeof input === 'string' && input.length > 0;
-    if (reset) {
-      const p = injectText((argv || []).join(' ') + '\n');
-      if (hasInput) {
-        p.then(() => setTimeout(() => injectText(input + '\n'), 2500));
-      }
-    } else if (hasInput) {
-      injectText(input + '\n');
+    // Simple confirm-to-run. OK → full spawn (argv + input). Cancel → no-op.
+    if (!window.confirm(`[${name}]\n\nリセットして実行しますか?`)) return;
+    const p = injectText((argv || []).join(' ') + '\n');
+    if (typeof input === 'string' && input.length > 0) {
+      p.then(() => setTimeout(() => injectText(input + '\n'), 2500));
     }
   }
   // Hot-swap hook: reload presets without a full page refresh whenever the
