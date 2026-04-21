@@ -1,2 +1,3 @@
 #!/usr/bin/env bash
-exec "/c/Users/yuuji/SBCLLocal/PFiles/Steel Bank Common Lisp/sbcl.exe" --load "$(dirname "$0")/demo.lisp"
+# Use sbcl from PATH. Override via SBCL env var if needed.
+exec "${SBCL:-sbcl}" --load "$(dirname "$0")/demo.lisp"
