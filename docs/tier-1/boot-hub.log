@@ -1,0 +1,4 @@
+[BOOT] photo-ai-lisp hub smoke start
+[BOOT] connect ws://127.0.0.1:8080/ws -> OK
+[BOOT] LIST ok=T session-count=33
+[BOOT] ok

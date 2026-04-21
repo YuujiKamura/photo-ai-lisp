@@ -45,5 +45,5 @@ jobs:
                --load ~/quicklisp/setup.lisp \
                --eval '(ql:quickload :fiveam :silent t)' \
                --eval '(ql:quickload :photo-ai-lisp :silent t)' \
-               --eval '(asdf:load-system :photo-ai-lisp/tests)' \
+               --eval '(ql:quickload :photo-ai-lisp/tests :silent t)' \
                --eval '(photo-ai-lisp/tests:run-tests)'

@@ -558,25 +558,34 @@ data-flow diagrams, and the Tier-3 candidate-task decision.
             bug also fixed (was at COMMON-LISP-USER).
       Est: 1h · Agent hint: Claude Sonnet | Codex
 
-- [ ] **T1.b** CP round-trip smoke: INPUT / SHOW / STATE / LIST
+- [x] **T1.b** CP round-trip smoke: INPUT / SHOW / STATE / LIST
       Implements: `scripts/cp-smoke.lisp`, `docs/tier-1/cp-roundtrip.log`
-      Deps: T1.a · Branch: `feat/t1b-cp-smoke`
+      Deps: T1.a · Branch: `feat/tier-1-finish`
       DoD: one script that sends each of the 4 verbs and prints JSON
            replies; committed log shows all 4 receive non-error responses.
+      Done: 2026-04-21 — all 4 verbs returned `:ok t` against live
+            deckpilot session `ghostty-30028`; SHOW :DATA base64 decodes
+            to the expected `echo t1b-ping` round-trip in cmd.exe.
       Est: 2h · Agent hint: Claude Sonnet
 
-- [ ] **T1.c** `scripts/boot-hub.lisp` exits 0 with green log
-      Implements: `scripts/boot-hub.lisp` (review/harden existing), `docs/tier-1/boot-hub.log`
-      Deps: T1.b · Branch: `feat/t1c-boot-hub`
+- [x] **T1.c** `scripts/boot-hub.lisp` exits 0 with green log
+      Implements: `scripts/boot-hub.lisp` (new), `docs/tier-1/boot-hub.log`
+      Deps: T1.b · Branch: `feat/tier-1-finish`
       DoD: `sbcl --script scripts/boot-hub.lisp` exits 0, stdout captured
            to `docs/tier-1/boot-hub.log`, no unhandled conditions.
+      Done: 2026-04-21 — sbcl --script exited 0; stderr empty; stdout
+            printed `[BOOT] ok` after a successful LIST round-trip
+            (session-count=33).
       Est: 1-2h · Agent hint: Claude Sonnet
 
-- [ ] **T1.d** Tier-1 completion evidence commit
+- [x] **T1.d** Tier-1 completion evidence commit
       Implements: `docs/tier-1/README.md` (index of logs) + all T1.* logs
-      Deps: T1.a, T1.b, T1.c · Branch: `feat/t1d-tier1-evidence`
+      Deps: T1.a, T1.b, T1.c · Branch: `feat/tier-1-finish`
       DoD: `docs/tier-1/` contains handshake + roundtrip + boot logs and
            a one-paragraph README pointing to each.
+      Done: 2026-04-21 — docs/tier-1/README.md indexes the three
+            evidence logs with relative links and a post-Atom-17.4
+            framing. Tier 1 closed.
       Est: 0.5h · Agent hint: Claude Sonnet | Gemini
 
 ### Tier 1.5 — CP protocol infrastructure (from `docs/jupyter-translation.md`)
