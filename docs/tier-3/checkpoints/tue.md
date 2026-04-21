@@ -12,7 +12,7 @@ week → ≈4/day`).
 
 | Channel | Count | Notes |
 |---------|-------|-------|
-| Hub-driven (`INPUT` lines in `usage.log` with `bytes > 0`) | `0` | usage-log auto-write not yet wired (C1 open); manual tally for today |
+| Hub-driven (`INPUT` lines in `usage.log` with `bytes > 0`) | `0` | C1 landed (initial `4e3cc05`, amended to record SHA); script greps `\tINPUT\t` lines with `bytes > 0` from `~/.photo-ai-lisp/usage.log` |
 | CLI-driven (terminal invocations, self-reported) | `_______` | photo-import CLI runs outside the hub |
 
 > **Hub ratio for today**: `hub_commands / (hub_commands + cli_commands)` = `_______`
@@ -38,6 +38,20 @@ week → ≈4/day`).
 - **Bug 3 — `.gitignore` excludes `demo.log`** — forced with `git add -f`
   during T2.g commit. Cosmetic; `!docs/**/demo.log` whitelist to be
   added when convenient.
+
+### Deferred to #30 G5.b (post-Fri)
+
+Scope items identified by the C1 review that do not affect the Fri
+2026-04-24 verdict (verdict only counts `INPUT` lines and the demo
+path is Mode 1 shell-broadcast):
+
+- Mode 2 legacy CP path does not write `INPUT` log lines (demo path
+  is Mode 1, so the verdict is unaffected this week).
+- `BOOT` / `SHUTDOWN` verbs not emitted despite being in the closed
+  verb set (see `+usage-log-verbs+` in `src/usage-log.lisp`).
+- ISO 8601 ms field not synchronized with the UTC second boundary
+  (derived from `get-internal-real-time` modulo 1000; process-local
+  epoch). `refs #30`.
 
 ---
 

@@ -68,4 +68,8 @@
            #:*demo-cp-client*
            #:input-bridge-handler
            ;; issue #19 — T2.c: demo session spawn utility
-           #:parse-demo-session-name))
+           #:parse-demo-session-name
+           ;; issue #29 — C1: usage log auto-write
+           #:*usage-log-path*
+           #:*usage-errors-log-path*
+           #:write-usage-log-event))

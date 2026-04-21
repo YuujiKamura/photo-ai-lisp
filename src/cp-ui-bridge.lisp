@@ -54,10 +54,20 @@
       ((and agent (plusp (length agent)))
        (let* ((text       (format nil "~A~%" cmd))
               (recipients (shell-broadcast-input text)))
-         (if (zerop recipients)
-             "{\"error\":\"no /ws/shell client connected; open the iframe first\"}"
-             (format nil "{\"ok\":true,\"mode\":\"shell-broadcast\",\"session\":\"demo\",\"recipients\":~d,\"bytes\":~d}"
-                     recipients (length text)))))
+         (cond
+           ((zerop recipients)
+            "{\"error\":\"no /ws/shell client connected; open the iframe first\"}")
+           (t
+            ;; C1 (issue #29): record INPUT verb per docs/tier-3/usage-log-format.md
+            ;; before returning success. IGNORE-ERRORS so a filesystem hiccup can't
+            ;; 503 a request that already broadcast successfully.
+            (ignore-errors
+              (write-usage-log-event
+               :verb    "INPUT"
+               :session (or *demo-session-id* "demo")
+               :bytes   (usage-log-utf8-byte-count cmd)))
+            (format nil "{\"ok\":true,\"mode\":\"shell-broadcast\",\"session\":\"demo\",\"recipients\":~d,\"bytes\":~d}"
+                    recipients (length text))))))
       ;; Mode 3 — legacy CP, no session configured.
       ((null *demo-session-id*)
        "{\"error\":\"no demo session configured yet\"}")
