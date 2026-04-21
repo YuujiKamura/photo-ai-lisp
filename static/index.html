@@ -67,38 +67,36 @@
     color: var(--text-muted); font-size: 12px; line-height: 1.6;
   }
 
-  /* #37 case C — inject form */
-  .inject-form {
-    display: flex; flex-direction: column; gap: 6px;
-    border-top: 1px solid var(--border); padding-top: 12px;
+  /* #37 case C rev2 — bottom-sticky chat bar */
+  #chat-bar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: flex-end; gap: 8px;
+    padding: 8px 12px;
+    background: #1a1a1f; border-top: 1px solid #2a2a33;
+    z-index: 20;
   }
-  .inject-form label {
-    font-size: 11px; text-transform: uppercase; color: var(--text-muted);
+  #chat-input {
+    flex: 1; min-height: 28px; max-height: 6em;
+    font: 13px/1.4 'Cascadia Mono', 'Consolas', monospace;
+    background: #0f0f14; color: #e5e5e5;
+    border: 1px solid #2a2a33; border-radius: 6px;
+    padding: 6px 10px; resize: none; outline: none;
+    overflow-y: auto;
   }
-  .inject-form textarea {
-    width: 100%; rows: 3;
-    background: #0f0f14; color: var(--text);
-    border: 1px solid var(--border); border-radius: 4px;
-    font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 12px;
-    padding: 6px 8px; resize: vertical;
-    outline: none; transition: border-color .15s;
+  #chat-input:focus { border-color: #7aa2f7; }
+  #chat-input.ok  { border-color: #73daca; }
+  #chat-input.err { border-color: #f7768e; }
+  #chat-send {
+    background: #7aa2f7; color: #1a1a1f;
+    border: none; border-radius: 6px;
+    padding: 6px 16px; font-weight: 600; cursor: pointer;
+    white-space: nowrap;
   }
-  .inject-form textarea:focus { border-color: var(--accent); }
-  .inject-form textarea.ok   { border-color: #4caf82; }
-  .inject-form textarea.err  { border-color: #ff6a6a; }
-  .inject-form .inject-row {
-    display: flex; gap: 6px; align-items: center;
-  }
-  .inject-form .inject-send {
-    flex-shrink: 0; padding: 5px 12px;
-    background: var(--accent); color: #fff;
-    border: none; border-radius: 4px; font-size: 12px; cursor: pointer;
-  }
-  .inject-form .inject-send:disabled { opacity: .5; cursor: default; }
-  .inject-form .inject-send:hover:not(:disabled) { opacity: .85; }
-  .inject-form .inject-hint {
-    font-size: 10px; color: var(--text-muted);
-  }
+  #chat-send:disabled { opacity: 0.5; cursor: wait; }
+  /* layout root: leave room for the fixed chat bar (~56px) */
+  body { padding-bottom: 56px; }
+  .terminal iframe { height: calc(100vh - 56px); }
+
   .master-group { margin-bottom: 8px; }
   .master-group > .head {
     font-size: 12px; font-weight: 600; margin-bottom: 2px;
@@ -155,19 +153,17 @@
     <h2>プリセット</h2>
     <div id="presetList" class="placeholder">(読込中)</div>
   </div>
-  <div class="inject-form">
-    <label>PTY 入力 (IME 対応)</label>
-    <textarea id="inject-text" rows="3" placeholder="入力 (Ctrl+Enter で送信)"></textarea>
-    <div class="inject-row">
-      <button class="inject-send" id="inject-send">Send</button>
-      <span class="inject-hint">Ctrl+Enter で送信 / Enter は改行</span>
-    </div>
-  </div>
 </aside>
 
 <section class="terminal">
   <iframe id="terminal" src="about:blank"></iframe>
 </section>
+
+<div id="chat-bar">
+  <textarea id="chat-input" rows="1"
+            placeholder="Ctrl+Enter で送信 · 日本語 OK"></textarea>
+  <button id="chat-send" type="button">Send</button>
+</div>
 
 <script>
   // Terminal iframe — ghostty-web URL (or built-in /shell) injected by Lisp server.
@@ -301,50 +297,48 @@
   refreshPresets();
   setInterval(refreshPresets, 2000);
 
-  // #37 case C — inject form wiring.
-  // Uses the same /api/inject endpoint as preset buttons and external curl.
-  // IME preedit/confirmation is fully handled by the browser-native textarea;
-  // we never touch e.key during composition so preedit is never truncated.
+  // #37 case C rev2 — bottom chat-bar wiring.
+  // Textarea auto-grows 1-6 lines. Ctrl+Enter submits; bare Enter = newline.
+  // IME composition is respected: isComposing guard prevents mid-preedit send.
   (function () {
-    const ta  = document.getElementById('inject-text');
-    const btn = document.getElementById('inject-send');
+    const ta  = document.getElementById('chat-input');
+    const btn = document.getElementById('chat-send');
     if (!ta || !btn) return;
 
-    let flashTimer = null;
-    function flash(cls) {
-      ta.classList.remove('ok', 'err');
-      ta.classList.add(cls);
-      if (flashTimer) clearTimeout(flashTimer);
-      flashTimer = setTimeout(() => ta.classList.remove(cls), 800);
+    function autoGrow() {
+      ta.style.height = 'auto';
+      const lh = parseFloat(getComputedStyle(ta).lineHeight) || 18;
+      ta.style.height = Math.min(ta.scrollHeight, 6 * lh) + 'px';
     }
 
-    async function sendInject() {
+    async function send() {
       const raw = ta.value;
       if (!raw) return;
-      const text = raw + '\r'; // CR = shell Enter
       btn.disabled = true;
       try {
-        const r = await fetch('/api/inject?text=' + encodeURIComponent(text), { method: 'GET' });
+        const r = await fetch('/api/inject?text=' + encodeURIComponent(raw + '\r'), { method: 'GET' });
         if (r.ok) {
           ta.value = '';
-          flash('ok');
+          autoGrow();
+          ta.classList.remove('err'); ta.classList.add('ok');
         } else {
-          flash('err');
+          ta.classList.remove('ok'); ta.classList.add('err');
         }
       } catch (_) {
-        flash('err');
+        ta.classList.remove('ok'); ta.classList.add('err');
       } finally {
+        setTimeout(() => ta.classList.remove('ok', 'err'), 800);
         btn.disabled = false;
         ta.focus();
       }
     }
 
-    btn.addEventListener('click', sendInject);
-    ta.addEventListener('keydown', function (e) {
-      // Ctrl+Enter (or Cmd+Enter on Mac) submits. Skip if IME is composing.
+    btn.addEventListener('click', send);
+    ta.addEventListener('input', autoGrow);
+    ta.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !e.isComposing) {
         e.preventDefault();
-        sendInject();
+        send();
       }
     });
   })();
