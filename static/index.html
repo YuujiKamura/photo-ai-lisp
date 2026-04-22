@@ -570,14 +570,28 @@
       if (!raw) return;
       btn.disabled = true;
       try {
-        const r = await fetch('/api/inject?text=' + encodeURIComponent(raw + '\r'), { method: 'GET' });
-        if (r.ok) {
-          ta.value = '';
-          autoGrow();
-          ta.classList.remove('err'); ta.classList.add('ok');
-        } else {
+        // Two-phase injection to work around TUIs (gemini CLI in
+        // particular) that treat a bundled "text\r" as "insert
+        // newline" rather than "submit".  Deckpilot issues #4 / #23
+        // traced the same bug: pasting text and pressing Enter must
+        // arrive as two distinct events, with enough gap for the
+        // composer's write buffer to settle.  Phase 1: paste the
+        // raw text (no line terminator).  Phase 2: fire a lone \n
+        // after AGENT_SUBMIT_GAP_MS; the server normalises LF -> CR
+        // so the PTY sees exactly one Enter keystroke.
+        const r = await fetch('/api/inject?text=' + encodeURIComponent(raw),
+                              { method: 'GET' });
+        if (!r.ok) {
           ta.classList.remove('ok'); ta.classList.add('err');
+          return;
         }
+        setTimeout(() => {
+          fetch('/api/inject?text=' + encodeURIComponent('\n'))
+            .catch(err => console.error('submit enter failed', err));
+        }, AGENT_SUBMIT_GAP_MS);
+        ta.value = '';
+        autoGrow();
+        ta.classList.remove('err'); ta.classList.add('ok');
       } catch (_) {
         ta.classList.remove('ok'); ta.classList.add('err');
       } finally {
