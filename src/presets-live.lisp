@@ -72,6 +72,49 @@
 5. ギャップ (区分/種別の欠落) を発見したら「学習 preset でマスタを育てて」と案内しろ
 連結ツリー整合などの健全性チェックには踏み込むな。あくまで「どのマスタで解析を始めるか」の合意形成だけが役割だ。")
 
+(defpreset "コマンド棚卸し"
+  :agent "claude"
+  :group nil
+  :input "サイドバーのプリセット群 (=自分自身を叩くボタン) を棚卸し・品質点検しろ。
+このプリセット自身がライブ編集可能であることを意識しろ — 気に入った修正は API で即適用できる。
+
+1. 現状取得:
+     curl -s http://localhost:8090/api/presets | jq
+   (demo.sh デフォルト 8090。別ポートならブラウザの URL バーで確認)
+
+2. 3 種別の内訳を Markdown テーブルで報告:
+     launcher (:argv + :agent)  — エージェント直接起動
+     prompt   (:agent + :input) — 起動中エージェントへのプロンプト
+     shell    (:argv, :agent 無) — シェルに直接打つ
+   各プリセットを種別・group・何をするか 1 行で列挙。
+
+3. 各 prompt preset の :input を読んで、参照してる
+   ~/photo-ai-skills/<name>/SKILL.md が実在するかチェック
+   (Bash で ls)。dead path があれば指摘。
+
+4. 重複・死蔵・意味不明・文面が崩れてるボタンをピックアップ。
+
+5. 修正案を提示し、ユーザーが OK したら以下の API で適用する
+   (自動適用はするな、必ず確認してから):
+     # 部分更新
+     curl -X POST http://localhost:8090/api/presets/rewrite/<name> \\
+       -H 'Content-Type: application/json' \\
+       --data-binary '{\"input\":\"...\"}'
+     # 新規
+     curl -X POST http://localhost:8090/api/presets/new/<name> \\
+       -H 'Content-Type: application/json' \\
+       --data-binary '{\"agent\":\"claude\",\"input\":\"...\"}'
+     # 削除
+     curl -X POST http://localhost:8090/api/presets/delete/<name>
+
+6. 永続化するときは最後に:
+     curl -X POST http://localhost:8090/api/presets/deploy
+   これで src/presets-live.lisp に焼かれ、再起動しても残る。
+
+7. 実地の解析実績 (過去の result.json や写真帳出力) と照らして、
+   『この preset はこう書いた方が成功率が上がる』という学びがあれば
+   併せてレポートしろ。")
+
 (defpreset "マスタ棚卸し"
   :agent "claude"
   :group nil
