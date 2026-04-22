@@ -2,14 +2,26 @@
 
 # photo-ai-lisp
 
-工事写真まわりの作業を 1 画面でまとめて回すためのローカルアプリ。ブラウザで開くと、左に工種マスタとよく使うボタン、右にターミナルが並んでいて、ボタンを押すとターミナルへコマンドが流し込まれる。
+工事写真まわりの作業を 1 画面でまとめて回すためのローカルアプリ。左に工種マスタとよく使うボタン、右にターミナルが並んでいて、ボタンを押すとターミナルへコマンドが流し込まれる。
 
 ## 動かすのに要るもの
 
-- SBCL 2.6 以降
-- Quicklisp（`~/quicklisp/setup.lisp` が置いてあること）
-- Windows（Git Bash）か Unix 系
-- ブラウザ（Chrome / Edge / Firefox どれでも）
+事前に入れておくもの:
+
+- **SBCL 2.6 以降** — Steel Bank Common Lisp 本体
+  - 入手: <https://www.sbcl.org/platform-table.html>
+  - PATH に入っていれば起動スクリプトがそのまま認識する
+  - 入っていなくても、`C:\Program Files\Steel Bank Common Lisp\`、`%USERPROFILE%\SBCLLocal\...`、`%LOCALAPPDATA%\Programs\...`、`C:\sbcl\` など代表的な導入先は自動で探す
+  - 上記以外の場所に入れた場合は `SBCL=/path/to/sbcl.exe bash scripts/demo.sh` のように env var で渡す
+- **Quicklisp** — Common Lisp のパッケージマネージャ
+  - 入手: <https://www.quicklisp.org/beta/>（ページの手順どおり `curl -O` → `sbcl --load quicklisp.lisp` → `(quicklisp-quickstart:install)`）
+  - 終わると `~/quicklisp/setup.lisp` が出来ている状態になる
+- **git** — このリポジトリを `git clone` するため
+
+OS:
+
+- **Windows 10 / 11**（Git Bash 推奨。コマンドプロンプトでも可）
+- **macOS / Linux**（任意のターミナル）
 
 ## 起動
 
@@ -25,15 +37,9 @@ Windows のコマンドプロンプトから:
 cd /d %USERPROFILE%\photo-ai-lisp && scripts\demo.cmd
 ```
 
-しばらく待って `SERVER http://localhost:8090/` と出たら、そのアドレスをブラウザで開く。止めるときは起動したターミナルで `Ctrl-C`。
+**しばらく待つとアプリウィンドウが自動で立ち上がる**（タブもアドレスバーも無い独立窓）。止めるときは起動したターミナルで `Ctrl-C`。
 
-### アプリ風の独立ウィンドウで開く（任意）
-
-ブラウザのタブやアドレスバーを消して「アプリっぽい」見た目にしたいときは Chrome を `--app` モードで起動する:
-
-```bash
-chrome --app=http://localhost:8090/ --window-size=1280,780
-```
+アプリ窓が出てこない環境 (Chrome も Edge も入っていないなど) のときだけ、起動ログに出る `SERVER http://localhost:8090/` を手動で開けばよい。自動起動が邪魔なときは `NO_APP_WINDOW=1 bash scripts/demo.sh`。
 
 ## 画面の見かた
 
@@ -58,10 +64,10 @@ chrome --app=http://localhost:8090/ --window-size=1280,780
 - `:input` … その次に続けて送る文字列（省略可）
 - `:group` … サイドバーで束ねる見出し名（省略すると最上段）
 
-書いた順がそのままボタンの並び順。サーバを止めずに変更を反映したいときは、下の URL をブラウザで 1 回踏む:
+書いた順がそのままボタンの並び順。アプリを止めずに変更を反映したいときは、下の URL をアプリ内のターミナルから叩く:
 
 ```
-http://localhost:8090/api/reload?module=presets
+curl http://localhost:8090/api/reload?module=presets
 ```
 
 ## ライセンス
