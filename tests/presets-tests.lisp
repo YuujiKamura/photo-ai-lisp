@@ -135,36 +135,80 @@
 
 ;; ---- regression: bundled presets carry the new content -----------------
 ;;
-;; Team C swapped the 3 legacy presets (hello / skills-list / date) for
-;; the 6 production presets that drive the photo-ai pipeline. The tests
-;; below pin the contract Team B relies on:
-;;   - every preset spawns claude with --dangerously-skip-permissions
-;;   - the 4 解析 presets share group "解析" and end with the common
-;;     footer
-;;   - 学習 and マスタ確認 stay top-level (group=null)
-;;   - declaration order matches the menu layout (UI is server-driven)
+;; Post-picker schema (direct launch): the bundle is now split into
+;; three kinds, tagged via (hasArgv, hasAgent, hasInput):
+;;
+;;   LAUNCHER   argv + agent         — spawn the agent executable
+;;                                     directly (claude / gemini /
+;;                                     codex). No prompt.
+;;   PROMPT     agent + input        — paste+submit INPUT into the
+;;              (no argv)              running agent. UI gates these
+;;                                     on agentRunning=true.
+;;   SHELL      argv (no agent)      — type a literal shell command.
+;;
+;; Tests below pin:
+;;   - 3 launchers: claude / gemini / codex (argv set, agent set,
+;;     group \"起動\", no input)
+;;   - 7 claude-agent prompt presets (agent=\"claude\", no argv)
+;;   - 1 shell preset: 画面クリア (argv=/exit, no agent)
+;;   - declaration order matches the menu layout (server-driven)
+
+(defparameter *bundled-launcher-names*
+  '("claude" "gemini" "codex")
+  "Launcher presets, in declaration order.")
+
+(defparameter *bundled-prompt-preset-names*
+  '("学習" "施工状況" "出来形管理" "品質管理" "その他" "マスタ確認" "マスタ棚卸し")
+  "Claude-agent prompt presets, in declaration order.")
 
 (defparameter *bundled-preset-names*
-  '("学習" "施工状況" "出来形管理" "品質管理" "その他" "マスタ確認")
-  "The 6 bundled presets that ship with photo-ai-lisp, in declaration
-   order. Pinned here so the regression tests below stay readable.")
+  (append *bundled-launcher-names*
+          *bundled-prompt-preset-names*
+          '("画面クリア"))
+  "All bundled presets in declaration order (menu layout).")
 
-(5am:test bundled-presets-share-claude-argv
-  "Every bundled preset spawns the same claude CLI with skip-permissions —
-   the per-preset behaviour lives entirely in :input."
-  (dolist (name *bundled-preset-names*)
-    (5am:is (equal '("claude" "--dangerously-skip-permissions")
-                   (photo-ai-lisp::find-preset-argv name))
-            "preset ~a has wrong argv" name)))
+(5am:test bundled-launchers-have-argv-and-agent
+  "Each launcher carries both :argv (the spawn command) and :agent
+   (the identity for the agentRunning flag), grouped under \"起動\",
+   with no :input."
+  (dolist (name *bundled-launcher-names*)
+    (let ((argv  (photo-ai-lisp::find-preset-argv  name))
+          (agent (photo-ai-lisp::find-preset-agent name))
+          (group (photo-ai-lisp::find-preset-group name))
+          (input (photo-ai-lisp::find-preset-input name)))
+      (5am:is (and (listp argv) (plusp (length argv)))
+              "launcher ~a should have non-empty argv" name)
+      (5am:is (equal name agent)
+              "launcher ~a should self-identify via :agent" name)
+      (5am:is (equal "起動" group)
+              "launcher ~a should live under group 起動" name)
+      (5am:is (null input)
+              "launcher ~a should not carry an :input prompt" name))))
 
-(5am:test bundled-presets-have-non-empty-input
-  "Every bundled preset carries an :input string. None should fall back
-   to the legacy nil — the new content model assumes a follow-up prompt
-   is always broadcast after spawn."
-  (dolist (name *bundled-preset-names*)
+(5am:test claude-prompt-presets-are-prompt-only
+  "Each claude-agent prompt preset declares :agent \"claude\", leaves
+   :argv empty (prompt-only), and carries a non-empty :input."
+  (dolist (name *bundled-prompt-preset-names*)
+    (5am:is (equal "claude" (photo-ai-lisp::find-preset-agent name))
+            "prompt preset ~a expected agent=claude" name)
+    (5am:is (null (photo-ai-lisp::find-preset-argv name))
+            "prompt preset ~a should have no literal argv" name)
     (let ((input (photo-ai-lisp::find-preset-input name)))
       (5am:is (stringp input) "preset ~a :input not a string" name)
       (5am:is (plusp (length input)) "preset ~a :input empty" name))))
+
+(5am:test screen-clear-preset-is-shell-mode
+  "画面クリア is the one bundled shell-mode preset: no :agent, a
+   literal /exit argv, and a cls follow-up. /exit closes claude if
+   it's running; cmd.exe ignores /exit harmlessly otherwise. No
+   pick-agent reference — the picker layer was retired."
+  (5am:is (null (photo-ai-lisp::find-preset-agent "画面クリア")))
+  (5am:is (equal '("/exit") (photo-ai-lisp::find-preset-argv "画面クリア")))
+  (let ((input (photo-ai-lisp::find-preset-input "画面クリア")))
+    (5am:is (stringp input))
+    (5am:is (search "cls" input))
+    (5am:is (not (search "pick-agent" input))
+            "画面クリア must not re-introduce the picker")))
 
 (5am:test analyze-presets-share-group
   "施工状況 / 出来形管理 / 品質管理 / その他 all live under group 解析."
@@ -173,9 +217,10 @@
             "preset ~a expected group 解析" name)))
 
 (5am:test top-level-presets-have-null-group
-  "学習 と マスタ確認 はトップレベル (group=nil)。"
-  (5am:is (null (photo-ai-lisp::find-preset-group "学習")))
-  (5am:is (null (photo-ai-lisp::find-preset-group "マスタ確認"))))
+  "学習 / マスタ確認 / マスタ棚卸し / 画面クリア はトップレベル。"
+  (dolist (name '("学習" "マスタ確認" "マスタ棚卸し" "画面クリア"))
+    (5am:is (null (photo-ai-lisp::find-preset-group name))
+            "preset ~a should be top-level (group=nil)" name)))
 
 (5am:test analyze-presets-end-with-shared-footer
   "DEF-ANALYZE-PRESET stitches *analyze-footer* onto each bias body so
@@ -192,28 +237,38 @@
 
 (5am:test bundled-presets-declaration-order
   "Menu layout is server-driven — list-preset-names must hand back the
-   exact order the spec mandates: 学習 → 4×解析 → マスタ確認."
+   exact order the spec mandates: 学習 → 4×解析 → マスタ確認 →
+   マスタ棚卸し → セレクターに戻る."
   (let ((names (photo-ai-lisp::list-preset-names)))
     (5am:is (equal *bundled-preset-names* names)
             "preset order mismatch: got ~a" names)))
 
+(defun %count-json-matches (json needle)
+  "Count non-overlapping occurrences of NEEDLE in JSON."
+  (loop with start = 0
+        for pos = (search needle json :start2 start)
+        while pos
+        count pos
+        do (setf start (1+ pos))))
+
 (5am:test bundled-presets-emit-group-key-in-json
-  "JSON contract: 4 解析 presets surface group=\"解析\", the other 2
-   surface group=null. Pinning the count guards both the shape and
-   the bucketing distribution."
+  "JSON group distribution for the bundled layout:
+     3 under 起動  (launchers)
+     4 under 解析  (analyze prompts)
+     4 null        (学習 / マスタ確認 / マスタ棚卸し / 画面クリア)"
   (let ((json (photo-ai-lisp::list-presets-handler)))
-    (let ((null-count 0)
-          (kaiseki-count 0)
-          (null-needle "\"group\":null")
-          (kaiseki-needle "\"group\":\"解析\"")
-          (start 0))
-      (loop for pos = (search null-needle json :start2 start)
-            while pos do (incf null-count) (setf start (1+ pos)))
-      (setf start 0)
-      (loop for pos = (search kaiseki-needle json :start2 start)
-            while pos do (incf kaiseki-count) (setf start (1+ pos)))
-      (5am:is (= 2 null-count)
-              "expected 2 \"group\":null entries, got ~a" null-count)
-      (5am:is (= 4 kaiseki-count)
-              "expected 4 \"group\":\"解析\" entries, got ~a"
-              kaiseki-count))))
+    (5am:is (= 4 (%count-json-matches json "\"group\":null")))
+    (5am:is (= 3 (%count-json-matches json "\"group\":\"起動\"")))
+    (5am:is (= 4 (%count-json-matches json "\"group\":\"解析\"")))))
+
+(5am:test bundled-presets-emit-agent-key-in-json
+  "JSON agent distribution:
+     1 claude launcher + 7 claude prompts = 8 agent=\"claude\"
+     1 gemini launcher                      = 1 agent=\"gemini\"
+     1 codex launcher                       = 1 agent=\"codex\"
+     1 shell teardown (画面クリア)    = 1 agent=null"
+  (let ((json (photo-ai-lisp::list-presets-handler)))
+    (5am:is (= 8 (%count-json-matches json "\"agent\":\"claude\"")))
+    (5am:is (= 1 (%count-json-matches json "\"agent\":\"gemini\"")))
+    (5am:is (= 1 (%count-json-matches json "\"agent\":\"codex\"")))
+    (5am:is (= 1 (%count-json-matches json "\"agent\":null")))))

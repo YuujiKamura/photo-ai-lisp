@@ -57,7 +57,12 @@
   .terminal {
     flex: 1;
     background: #0f0f0f;
-    min-width: 0;
+    /* Floor at 80-col-ish width so narrow browsers get a horizontal
+       scrollbar instead of squishing the iframe. ghostty-web measures
+       its container and derives column count from it — shrink the
+       container and the terminal reflows to fewer columns, which
+       breaks any 80-col ASCII art the CLI prints. */
+    min-width: 720px;
   }
   .terminal iframe {
     width: 100%; height: 100%; border: 0; display: block;
@@ -146,6 +151,27 @@
     from { transform: rotate(0deg); }
     to   { transform: rotate(360deg); }
   }
+  /* Agent-running indicator. Click to toggle the client-side flag
+     when it desyncs from reality (e.g. agent crashed, user typed
+     /exit directly). Red dot = no agent; green = agent live. */
+  .agent-indicator {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text-muted);
+    padding: 4px 6px; margin-top: 4px;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: var(--input-bg);
+    cursor: pointer; user-select: none;
+  }
+  .agent-indicator:hover { border-color: var(--accent); }
+  .agent-indicator .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #ff6a6a;
+  }
+  .agent-indicator.running .dot { background: #73daca; }
+  .btn:disabled {
+    opacity: 0.35; cursor: not-allowed;
+  }
+  .btn:disabled:hover { border-color: var(--border); }
 </style>
 </head>
 <body>
@@ -158,6 +184,13 @@
          pushes a status envelope with content.state=processing. -->
     <div id="cp-status" class="cp-status" aria-live="polite">
       <span class="glyph">⟳</span> <span class="label">processing…</span>
+    </div>
+    <!-- Agent running indicator. Click to toggle if it desyncs from
+         the actual terminal state. Agent-mode presets are disabled
+         until this flag is on. -->
+    <div id="agent-state" class="agent-indicator" title="クリックで手動 toggle">
+      <span class="dot"></span>
+      <span class="label">agent off</span>
     </div>
   </div>
   <div>
@@ -294,13 +327,130 @@
     return fetch('/api/inject?text=' + encodeURIComponent(text))
       .catch(err => console.error('inject failed', err));
   }
-  function runPreset(name, argv, input) {
-    // Simple confirm-to-run. OK → full spawn (argv + input). Cancel → no-op.
-    if (!window.confirm(`[${name}]\n\nリセットして実行しますか?`)) return;
-    const p = injectText((argv || []).join(' ') + '\n');
-    if (typeof input === 'string' && input.length > 0) {
-      p.then(() => setTimeout(() => injectText(input + '\n'), 2500));
+
+  // ---- agent-running state (client-side, heuristic) ----------------
+  //
+  // We can't cheaply probe whether an interactive TUI is live in the
+  // PTY, so we track it client-side and let the user correct drift.
+  // Transitions:
+  //   · spawn-mode click on an agent preset  → agentRunning = true
+  //   · click on a preset whose argv starts with "/exit" → false
+  //   · manual toggle via the sidebar indicator → flips
+  //
+  // While agentRunning is false, every agent-mode button is disabled
+  // so a stray click can't type "1" + a multi-KB paste into a bare
+  // cmd prompt.
+  let agentRunning = localStorage.getItem('agentRunning') === '1';
+  function setAgentRunning(v) {
+    agentRunning = !!v;
+    try { localStorage.setItem('agentRunning', agentRunning ? '1' : '0'); }
+    catch (_) { /* private browsing etc. — fine to ignore */ }
+    renderAgentIndicator();
+    applyAgentGate();
+  }
+  function renderAgentIndicator() {
+    const el = document.getElementById('agent-state');
+    if (!el) return;
+    el.classList.toggle('running', agentRunning);
+    const label = el.querySelector('.label');
+    if (label) label.textContent = agentRunning ? 'agent on' : 'agent off';
+  }
+  function applyAgentGate() {
+    document.querySelectorAll('#presetList button').forEach(b => {
+      if (b.dataset.agentGated === '1') {
+        b.disabled = !agentRunning;
+      }
+    });
+  }
+  (function initAgentIndicator() {
+    const el = document.getElementById('agent-state');
+    if (!el) return;
+    el.addEventListener('click', () => setAgentRunning(!agentRunning));
+    renderAgentIndicator();
+  })();
+
+  // ---- shared inject primitives ------------------------------------
+  //
+  // All preset buttons flow through these helpers, so the submit
+  // protocol, picker-digit table, and timing constants live in exactly
+  // one place.  Adding a new agent = one line in AGENT_SPAWN_DIGIT.
+  // Tweaking the paste→submit gap = one constant.
+  const AGENT_SPAWN_DIGIT  = { claude: '1', gemini: '2', codex: '3' };
+  const AGENT_COLD_START_MS = 2500;   // after picker digit, before first prompt
+  const AGENT_SUBMIT_GAP_MS = 300;    // between paste body and trailing Enter
+
+  // sendToAgent — paste a multi-line chat prompt into an interactive
+  // TUI (claude/gemini/codex). Each \n inside BODY becomes a soft
+  // newline; we hold the submit Enter until the paste burst has
+  // settled so the trailing CR is treated as "send" not "newline".
+  function sendToAgent(body) {
+    injectText(body);
+    setTimeout(() => injectText('\n'), AGENT_SUBMIT_GAP_MS);
+  }
+  // sendToShell — fire a single shell command terminated by one Enter.
+  // Server normalises LF→CR so cmd.exe / bash see exactly one press.
+  function sendToShell(cmd) {
+    injectText(cmd + '\n');
+  }
+  // spawnAgent — select AGENT from pick-agent.cmd (digit + Enter).
+  // Returns the Promise so callers can chain a cold-start timer.
+  function spawnAgent(agent) {
+    const d = AGENT_SPAWN_DIGIT[agent];
+    if (!d) {
+      console.error('spawnAgent: unknown agent', agent);
+      return Promise.resolve();
     }
+    return injectText(d + '\n');
+  }
+
+  function runPreset(name, argv, input, agent) {
+    // Three preset kinds, decided by (hasArgv, hasAgent, hasInput):
+    //
+    //   launcher  (argv + agent)  — spawn command types into cmd;
+    //     after cold-start delay we flip agentRunning=true so prompt
+    //     presets enable themselves. No dialog; one click = one launch.
+    //   prompt    (agent + input, no argv) — paste+submit INPUT into
+    //     the running agent. Gated on agentRunning being true (button
+    //     disabled otherwise so this code path only runs when live).
+    //   shell     (argv, no agent) — type argv into cmd and optionally
+    //     follow with input as a second shell command. /exit at the
+    //     head flips agentRunning=false (the agent is terminating).
+    //
+    // No confirm dialog.  The agent-running gate already hides prompt
+    // presets when no agent is live, so every clickable button maps
+    // to exactly one intended action — a native popup per click is
+    // pure friction.
+    const hasInput  = typeof input === 'string' && input.length > 0;
+    const hasArgv   = Array.isArray(argv) && argv.length > 0;
+    const hasAgent  = typeof agent === 'string' && agent.length > 0;
+
+    const isLauncher = hasArgv && hasAgent;
+    const isPrompt   = hasAgent && !hasArgv && hasInput;
+    const isShell    = hasArgv && !hasAgent;
+
+    if (isLauncher) {
+      injectText((argv || []).join(' ') + '\n');
+      // Agent cold-start: bump the flag so downstream prompt buttons
+      // un-gate themselves when the user is ready to click them.
+      setTimeout(() => setAgentRunning(true), AGENT_COLD_START_MS);
+      return;
+    }
+    if (isPrompt) {
+      sendToAgent(input);
+      return;
+    }
+    if (isShell) {
+      // /exit → agent is dying; flip the flag so prompt presets re-gate.
+      if (argv[0] === '/exit') setAgentRunning(false);
+      injectText((argv || []).join(' ') + '\n');
+      if (hasInput) {
+        setTimeout(() => sendToShell(input), AGENT_SUBMIT_GAP_MS);
+      }
+      return;
+    }
+    // Fallback — only hit if a preset is misconfigured (no argv, no
+    // agent, no input). Nothing to do.
+    console.warn('runPreset: empty preset', name);
   }
   // Hot-swap hook: reload presets without a full page refresh whenever the
   // server signals /api/reload (Swank-driven). Cheap polling is fine for now;
@@ -328,8 +478,23 @@
         const b = document.createElement('button');
         b.className = 'btn';
         b.textContent = p.name;
-        b.title = (p.argv || []).join(' ');
-        b.addEventListener('click', () => runPreset(p.name, p.argv, p.input));
+        // Gate only PROMPT presets (agent set, argv empty) on
+        // agentRunning — those need a live TUI to paste into.
+        // Launchers (agent + argv) must stay clickable so the user
+        // can start an agent in the first place. Shell presets
+        // (no agent) are always clickable.
+        const hasAgent = typeof p.agent === 'string' && p.agent.length > 0;
+        const hasArgv  = Array.isArray(p.argv) && p.argv.length > 0;
+        const isLauncher = hasAgent && hasArgv;
+        const isPrompt   = hasAgent && !hasArgv;
+        b.title = isLauncher
+          ? `起動: ${(p.argv || []).join(' ')}`
+          : isPrompt
+            ? `agent: ${p.agent}` + (!agentRunning ? '\n(エージェント未起動のため無効)' : '')
+            : (p.argv || []).join(' ');
+        b.dataset.agentGated = isPrompt ? '1' : '0';
+        if (isPrompt && !agentRunning) b.disabled = true;
+        b.addEventListener('click', () => runPreset(p.name, p.argv, p.input, p.agent));
         const g = (typeof p.group === 'string' && p.group.length > 0) ? p.group : null;
         if (g === null) {
           target.appendChild(b);

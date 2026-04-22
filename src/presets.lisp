@@ -57,29 +57,36 @@
       ;; Assume an already list-producing form (LIST, APPEND, etc.).
       (t form))))
 
-(defmacro defpreset (name &key argv input group)
+(defmacro defpreset (name &key argv input group agent)
   "Register a preset under NAME (keyword or string).
 
-   :ARGV is a list of argv tokens to inject into the terminal. Either a
-   literal (\"claude\" \"--foo\") or an expression that evaluates to a
-   list ((list (if ...) ...)).
+   :AGENT is an optional string identifying an interactive TUI agent
+   launched via pick-agent.cmd: \"claude\" / \"gemini\" / \"codex\".
+   When set, the UI derives the picker digit and uses the paste+Enter
+   submit protocol. When NIL, the preset targets the raw shell and
+   :ARGV + single-Enter injection is used.
 
-   :INPUT is an optional string (or expression evaluating to one, or
-   NIL) used as an initial prompt to broadcast into the agent after
-   spawn. Defaults to NIL.
+   :ARGV is a list of argv tokens to inject when :AGENT is NIL (raw
+   shell mode). Either a literal (\"...\" \"...\") or an expression
+   evaluating to a list. Ignored (and should be NIL) when :AGENT is
+   set — the UI computes the picker digit itself.
 
-   :GROUP is an optional string — if non-nil, the UI buckets the preset
-   under a group header of that name (2-level menu). NIL means the
-   preset is a top-level button.
+   :INPUT is an optional string for the follow-up prompt. Agent-mode
+   presets use it as the chat prompt; shell-mode presets use it as a
+   follow-up shell command after :ARGV runs.
 
-   REPL re-evaluation just overwrites the existing entry and preserves
-   the preset's original declaration position in *preset-order*."
+   :GROUP buckets the preset under a group header of that name; NIL
+   makes it a top-level button.
+
+   REPL re-evaluation overwrites the entry and preserves declaration
+   order in *preset-order*."
   (let ((key (string-downcase (string name))))
     `(progn
        (setf (gethash ,key *presets*)
              (list :argv ,(%expand-preset-argv argv)
                    :input ,input
-                   :group ,group))
+                   :group ,group
+                   :agent ,agent))
        (unless (member ,key *preset-order* :test #'equal)
          (setf *preset-order* (append *preset-order* (list ,key))))
        ,key)))
@@ -104,6 +111,12 @@
   "Group label for NAME, or NIL if the preset is top-level (or unknown)."
   (let ((entry (find-preset name)))
     (and entry (getf entry :group))))
+
+(defun find-preset-agent (name)
+  "Agent identifier (\"claude\"/\"gemini\"/\"codex\") or NIL if the
+   preset is shell-mode (or unknown)."
+  (let ((entry (find-preset name)))
+    (and entry (getf entry :agent))))
 
 (defun list-preset-names ()
   "All registered preset names in declaration order. Defined presets
@@ -135,6 +148,7 @@
 ;;   品質管理              │
 ;;   その他                ┘
 ;;   マスタ確認            (top-level)
+;;   マスタ棚卸し          (top-level)
 ;;
 ;; The four 解析 presets share a common footer (chat fallback +
 ;; master-not-selected hint).  *analyze-footer* keeps the footer in
@@ -149,19 +163,17 @@
    a defparameter so REPL hot-reload of presets.lisp picks up edits
    immediately and every analyze preset rebuilds with the new text.")
 
-(defparameter *claude-argv* '("claude" "--dangerously-skip-permissions")
-  "Spawn line shared by every bundled preset. claude CLI with
-   permissions skipped because the agent runs inside the same shell
-   the user is already supervising via ghostty-web.")
-
 (defmacro def-analyze-preset (name bias)
   "Register a 解析-group preset NAME whose initial prompt is BIAS plus
    the shared *analyze-footer*. Expands to a plain DEFPRESET so all
    the order/group/JSON machinery above is reused without a special
    case. NAME is a string (the preset name shown in the sidebar);
-   BIAS is a string (the bias line specific to this preset)."
+   BIAS is a string (the bias line specific to this preset).
+
+   The preset targets the claude agent — the UI handles picker-digit
+   spawn and paste+Enter submit automatically."
   `(defpreset ,name
-     :argv (list "claude" "--dangerously-skip-permissions")
+     :agent "claude"
      :group "解析"
      :input (format nil "~a~%~a" ,bias *analyze-footer*)))
 
@@ -171,8 +183,33 @@
 (clrhash *presets*)
 (setf *preset-order* '())
 
+;; ---- agent launchers -----------------------------------------------
+;; Direct-spawn presets (argv + agent). Replaces pick-agent.cmd's
+;; "press N then Enter" pattern: one click per agent, no middle step.
+;;   - :agent "X" marks the preset as a launcher; UI flips
+;;     agentRunning=true after the cold-start delay so prompt presets
+;;     enable themselves.
+;;   - :argv is the actual shell command the terminal types.
+
+(defpreset "claude"
+  :agent "claude"
+  :group "起動"
+  :argv (list "claude" "--dangerously-skip-permissions"))
+
+(defpreset "gemini"
+  :agent "gemini"
+  :group "起動"
+  :argv (list "gemini"))
+
+(defpreset "codex"
+  :agent "codex"
+  :group "起動"
+  :argv (list "codex"))
+
+;; ---- prompt presets (require an agent running) ---------------------
+
 (defpreset "学習"
-  :argv (list "claude" "--dangerously-skip-permissions")
+  :agent "claude"
   :group nil
   :input "photo-reference-build スキルで GT (Excel 一覧 + PDF 写真帳) から reference.json を逆生成しろ。
 - ref に出現してマスタに無い語は検索パターン候補としてユーザーに提示して追記の可否を確認しろ
@@ -191,7 +228,7 @@
   "写真区分のバイアスを掛けず photo-ai-workflow 全段 (AI 抽出 + 決定論判定) を回せ。区分は AI 出力と decisive ルールの合議で決めろ。")
 
 (defpreset "マスタ確認"
-  :argv (list "claude" "--dangerously-skip-permissions")
+  :agent "claude"
   :group nil
   :input "解析を始める前のドライラン役として動け。
 1. masters/ 配下の CSV/Excel を列挙しろ
@@ -201,10 +238,34 @@
 5. ギャップ (区分/種別の欠落) を発見したら「学習 preset でマスタを育てて」と案内しろ
 連結ツリー整合などの健全性チェックには踏み込むな。あくまで「どのマスタで解析を始めるか」の合意形成だけが役割だ。")
 
+(defpreset "マスタ棚卸し"
+  :agent "claude"
+  :group nil
+  :input "masters/ を機械的に棚卸ししろ。以下のコマンドを順に実行し、結果の転記だけが仕事だ。推論・探索・健全性チェックは禁止。
+
+1. Bash `ls -la masters/` で実在ファイルを確認
+2. Bash `find . -maxdepth 4 -type f \\( -name '*.csv' -o -name '*.xlsx' -o -name '*.xls' \\) -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/target/*'` でリポジトリ全体のマスタ候補を列挙
+3. 各候補に Bash `file <path>; wc -l <path>` を回し encoding と行数を確定
+4. CSV は Read で先頭 20 行まで開き、1 行目をスキーマとして抜き出せ
+5. Markdown テーブル (path | rows | format | header) で 1 枚にまとめ、末尾に期待カラム (写真区分 / 種別) を持たないマスタをギャップとして列挙
+6. ユーザーに「このマスタで進めるか、学習 preset で育てるか」を 1 行で問え")
+
+;; ---- screen clear ---------------------------------------------------
+;; 画面クリア — shell-layer preset (agent=nil).
+;; /exit は claude のスラッシュコマンドで、claude 実行中ならセッション
+;; を閉じて cmd に戻る。cmd プロンプトでは未知コマンドとして fail する
+;; だけで無害なので、agent 起動中/非起動どちらで押しても最終的に画面
+;; がクリーンになる。「画面をリセットする 1 ボタン」という素直な名前
+;; に寄せた — 実装的には /exit + cls。
+(defpreset "画面クリア"
+  :argv (list "/exit")
+  :group nil
+  :input "cls")
+
 ;; ---- hot reload ----------------------------------------------------------
 
 (defvar *reloadable-modules*
-  '(:proc :presets :business-ui :term :control :main)
+  '(:proc :presets :presets-live :business-ui :term :control :main)
   "Source module keywords that /api/reload can hot-swap. Keys map to
    files under src/ via the naming convention src/<key>.lisp.")
 
@@ -293,17 +354,17 @@
 
 (defun list-presets-handler ()
   "HTTP handler body for GET /api/presets. Returns a JSON array of
-   {name, argv, input, group} in declaration order so the UI can render
-   buttons dynamically with a stable 2-level grouping.
-   input and group are null when the preset has no initial prompt or
-   no group header (top-level)."
+   {name, argv, input, group, agent} in declaration order so the UI can
+   render buttons dynamically with a stable 2-level grouping.
+   input / group / agent are null when absent."
   (let ((objs
           (loop for name in (list-preset-names)
                 for argv = (find-preset-argv name)
                 for input = (find-preset-input name)
                 for group = (find-preset-group name)
+                for agent = (find-preset-agent name)
                 collect (format nil
-                                "{\"name\":\"~a\",\"argv\":[~{\"~a\"~^,~}],\"input\":~a,\"group\":~a}"
+                                "{\"name\":\"~a\",\"argv\":[~{\"~a\"~^,~}],\"input\":~a,\"group\":~a,\"agent\":~a}"
                                 (%json-escape name)
                                 (mapcar #'%json-escape argv)
                                 (if input
@@ -311,5 +372,300 @@
                                     "null")
                                 (if group
                                     (format nil "\"~a\"" (%json-escape group))
+                                    "null")
+                                (if agent
+                                    (format nil "\"~a\"" (%json-escape agent))
                                     "null")))))
     (format nil "[~{~a~^,~}]" objs)))
+
+;; ---- live mutation API ---------------------------------------------------
+;;
+;; NEW / REWRITE / DELETE / DEPLOY fan into these helpers.  Each mutator
+;; fires a reload:business-ui frame on /ws/control so the sidebar polls
+;; the refreshed /api/presets immediately, skipping the 2 s poll tick.
+;;
+;; DEPLOY writes src/presets-live.lisp — a file whose ASDF load order
+;; is *after* presets.lisp.  At load time it CLRHASH-es the registry
+;; and reinstalls every entry, so deploy-then-restart reproduces the
+;; live state exactly.  Absent/empty file means the factory bundle in
+;; presets.lisp is canonical.
+
+(defun %notify-presets-changed ()
+  "Broadcast a reload:business-ui frame so the sidebar re-fetches
+   /api/presets without waiting for the 2 s poll."
+  (notify-reload-observers "reload:business-ui"))
+
+(defun add-preset-entry (name argv &key input group agent)
+  "Install (or overwrite) NAME in the registry and push a reload
+   notification. ARGV is a list of strings; INPUT, GROUP, AGENT are
+   strings or NIL. Returns NAME in canonical (lowercased) form."
+  (let ((key (string-downcase (string name))))
+    (setf (gethash key *presets*)
+          (list :argv argv :input input :group group :agent agent))
+    (unless (member key *preset-order* :test #'equal)
+      (setf *preset-order* (append *preset-order* (list key))))
+    (%notify-presets-changed)
+    key))
+
+(defun rewrite-preset-entry (name &key (argv nil argv-p)
+                                       (input nil input-p)
+                                       (group nil group-p)
+                                       (agent nil agent-p))
+  "Partial update. Only fields marked supplied are changed. Errors if
+   NAME is not registered. Returns the canonical key."
+  (let* ((key (string-downcase (string name)))
+         (entry (gethash key *presets*)))
+    (unless entry
+      (error "preset not found: ~a" name))
+    (setf (gethash key *presets*)
+          (list :argv  (if argv-p  argv  (getf entry :argv))
+                :input (if input-p input (getf entry :input))
+                :group (if group-p group (getf entry :group))
+                :agent (if agent-p agent (getf entry :agent))))
+    (%notify-presets-changed)
+    key))
+
+(defun remove-preset-entry (name)
+  "Drop NAME from both *presets* and *preset-order*, then broadcast.
+   Errors if NAME is unknown so callers can surface a 404."
+  (let ((key (string-downcase (string name))))
+    (unless (gethash key *presets*)
+      (error "preset not found: ~a" name))
+    (remhash key *presets*)
+    (setf *preset-order* (remove key *preset-order* :test #'equal))
+    (%notify-presets-changed)
+    key))
+
+;; ---- deploy (serialise current state to src/presets-live.lisp) -----------
+
+(defun %escape-lisp-string (s)
+  "Return an S-expression-safe rendering of string S, e.g.
+   \"hello\\\"world\" for input hello\"world. PRIN1-TO-STRING on a
+   string yields exactly that with correct escaping of \\ and \"."
+  (prin1-to-string (or s "")))
+
+(defun %emit-defpreset (name entry stream)
+  "Write one DEFPRESET form rebuilding NAME from ENTRY to STREAM.
+   ENTRY is the plist stored in *presets* (:argv :input :group :agent).
+   Emits every non-nil field; launchers have both :argv and :agent
+   (argv spawns the executable, agent identifies which running
+   process to flip the agentRunning flag for)."
+  (format stream "(defpreset ~a~%" (%escape-lisp-string name))
+  (let ((argv (getf entry :argv)))
+    (when argv
+      (format stream "  :argv (list~{ ~a~})~%"
+              (mapcar #'%escape-lisp-string argv))))
+  (let ((agent (getf entry :agent)))
+    (when agent
+      (format stream "  :agent ~a~%" (%escape-lisp-string agent))))
+  (let ((group (getf entry :group)))
+    (if group
+        (format stream "  :group ~a~%" (%escape-lisp-string group))
+        (format stream "  :group nil~%")))
+  (let ((input (getf entry :input)))
+    (if input
+        (format stream "  :input ~a)~%~%" (%escape-lisp-string input))
+        (format stream "  :input nil)~%~%"))))
+
+(defun deploy-presets ()
+  "Serialise the current live state to src/presets-live.lisp. The file
+   is loaded after presets.lisp at startup (see asd), so a deploy
+   survives restart. Returns (:ok :path P :count N)."
+  (let ((path (merge-pathnames "src/presets-live.lisp" (uiop:getcwd)))
+        (names (list-preset-names)))
+    (with-open-file (stream path :direction :output
+                                 :if-exists :supersede
+                                 :if-does-not-exist :create
+                                 :external-format :utf-8)
+      (format stream ";;; AUTO-GENERATED by POST /api/presets  (method DEPLOY).~%")
+      (format stream ";;; Live snapshot of *presets* at deploy time. Re-running DEPLOY~%")
+      (format stream ";;; rewrites this file in full. Delete to fall back to the~%")
+      (format stream ";;; factory bundle in presets.lisp.~%~%")
+      (format stream "(in-package #:photo-ai-lisp)~%~%")
+      (format stream "(clrhash *presets*)~%")
+      (format stream "(setf *preset-order* '())~%~%")
+      (dolist (n names)
+        (%emit-defpreset n (gethash n *presets*) stream)))
+    (list :ok t :path (namestring path) :count (length names))))
+
+;; ---- HTTP dispatcher for /api/presets[/<verb>[/<name>]] ------------------
+
+(defun %preset-path-segments (uri)
+  "Split the path after /api/presets into its verb and name segments.
+   URI comes from HUNCHENTOOT:SCRIPT-NAME which already percent-decodes
+   the path, so Japanese segment names arrive as real characters and
+   MUST NOT be url-decoded again (that crashes on non-ASCII).
+   Returns (VALUES VERB NAME) where each is a string or NIL.
+   Examples:
+     /api/presets                      → (nil  nil)
+     /api/presets/new/smoke-one        → (\"new\"     \"smoke-one\")
+     /api/presets/deploy               → (\"deploy\"  nil)
+     /api/presets/delete/マスタ確認    → (\"delete\"  \"マスタ確認\")"
+  (let* ((prefix "/api/presets")
+         (plen (length prefix)))
+    (unless (and (>= (length uri) plen)
+                 (string= uri prefix :end1 plen))
+      (return-from %preset-path-segments (values nil nil)))
+    (when (= (length uri) plen)
+      (return-from %preset-path-segments (values nil nil)))
+    (unless (char= (char uri plen) #\/)
+      (return-from %preset-path-segments (values nil nil)))
+    (let* ((rest (subseq uri (1+ plen)))
+           (q    (position #\? rest))
+           (path (if q (subseq rest 0 q) rest))
+           (slash (position #\/ path)))
+      (if slash
+          (values (subseq path 0 slash)
+                  (let ((tail (subseq path (1+ slash))))
+                    (and (plusp (length tail)) tail)))
+          (values path nil)))))
+
+(defun %parse-preset-body ()
+  "Read the raw POST body and parse it as JSON. Returns a hash-table
+   or NIL when the body is empty/unparsable."
+  (let ((raw (hunchentoot:raw-post-data :force-text t)))
+    (when (and raw (plusp (length raw)))
+      (handler-case (shasht:read-json raw)
+        (error () nil)))))
+
+(defun %json-get (table key)
+  "Fetch KEY (string) from shasht-parsed TABLE, or NIL if absent."
+  (and (hash-table-p table) (gethash key table)))
+
+(defun %argv-from-json (val)
+  "Coerce VAL (shasht-parsed) into a list of strings for :argv. Accepts
+   a JSON array; returns NIL for anything else."
+  (cond
+    ((null val) nil)
+    ((vectorp val) (coerce val 'list))
+    ((listp val) val)
+    (t nil)))
+
+(defun %string-or-nil (val)
+  "Return VAL as a string, or NIL if VAL is NIL / :null / absent."
+  (cond
+    ((or (null val) (eq val :null)) nil)
+    ((stringp val) val)
+    (t (princ-to-string val))))
+
+(defun %preset-json-response (name extra)
+  "Build a {\"ok\":true,\"name\":...,...EXTRA} JSON body. EXTRA is a
+   plist of (\"key\" \"jsonvalue\" ...) pre-rendered."
+  (with-output-to-string (s)
+    (format s "{\"ok\":true,\"name\":~a" (%escape-lisp-string (or name "")))
+    (loop for (k v) on extra by #'cddr
+          do (format s ",\"~a\":~a" k v))
+    (format s "}")))
+
+(defun %preset-error-response (code message)
+  (setf (hunchentoot:return-code*) code)
+  (format nil "{\"ok\":false,\"error\":~a}" (%escape-lisp-string message)))
+
+(defun preset-new-handler (name)
+  "Body of POST /api/presets/new/<name>.
+   Body JSON: either {agent:\"claude\"|...} (TUI preset) or
+             {argv:[\"...\",...]} (raw-shell preset). Both may set
+             input and group."
+  (unless (and name (plusp (length name)))
+    (return-from preset-new-handler
+      (%preset-error-response 400 "name required")))
+  (let* ((body  (%parse-preset-body))
+         (argv  (%argv-from-json (%json-get body "argv")))
+         (input (%string-or-nil (%json-get body "input")))
+         (group (%string-or-nil (%json-get body "group")))
+         (agent (%string-or-nil (%json-get body "agent"))))
+    (unless (or agent argv)
+      (return-from preset-new-handler
+        (%preset-error-response 400
+         "either agent (\"claude\"/\"gemini\"/\"codex\") or argv (JSON array of strings) required")))
+    (handler-case
+        (let ((key (add-preset-entry name argv
+                                     :input input
+                                     :group group
+                                     :agent agent)))
+          (%preset-json-response key '()))
+      (error (e)
+        (%preset-error-response 500 (princ-to-string e))))))
+
+(defun preset-rewrite-handler (name)
+  "Body of POST /api/presets/rewrite/<name>. Partial update: any field
+   omitted from the body is left untouched. Supports argv, input,
+   group, agent."
+  (unless (and name (plusp (length name)))
+    (return-from preset-rewrite-handler
+      (%preset-error-response 400 "name required")))
+  (let* ((body (%parse-preset-body))
+         (has-argv  (and body (nth-value 1 (gethash "argv"  body))))
+         (has-input (and body (nth-value 1 (gethash "input" body))))
+         (has-group (and body (nth-value 1 (gethash "group" body))))
+         (has-agent (and body (nth-value 1 (gethash "agent" body)))))
+    (unless (or has-argv has-input has-group has-agent)
+      (return-from preset-rewrite-handler
+        (%preset-error-response 400 "no fields to rewrite (supply argv, input, group, or agent)")))
+    (handler-case
+        (let* ((args (append (when has-argv  (list :argv  (%argv-from-json (gethash "argv" body))))
+                             (when has-input (list :input (%string-or-nil (gethash "input" body))))
+                             (when has-group (list :group (%string-or-nil (gethash "group" body))))
+                             (when has-agent (list :agent (%string-or-nil (gethash "agent" body))))))
+               (key (apply #'rewrite-preset-entry name args)))
+          (%preset-json-response key '()))
+      (error (e)
+        (%preset-error-response 400 (princ-to-string e))))))
+
+(defun preset-delete-handler (name)
+  "Body of method DELETE on /api/presets/<name>."
+  (unless (and name (plusp (length name)))
+    (return-from preset-delete-handler
+      (%preset-error-response 400 "name required")))
+  (handler-case
+      (let ((key (remove-preset-entry name)))
+        (%preset-json-response key '()))
+    (error (e)
+      (%preset-error-response 404 (princ-to-string e)))))
+
+(defun preset-deploy-handler ()
+  "Body of method DEPLOY on /api/presets. Writes presets-live.lisp."
+  (handler-case
+      (let* ((r (deploy-presets))
+             (path (getf r :path))
+             (count (getf r :count)))
+        (format nil "{\"ok\":true,\"path\":~a,\"count\":~a}"
+                (%escape-lisp-string path) count))
+    (error (e)
+      (%preset-error-response 500 (princ-to-string e)))))
+
+(defun %presets-dispatch ()
+  "Prefix dispatcher for /api/presets[/<verb>[/<name>]].
+   The first path segment after /api/presets is the verb:
+     GET  /api/presets                 → list-presets-handler
+     POST /api/presets/new/<name>      → preset-new-handler
+     POST /api/presets/rewrite/<name>  → preset-rewrite-handler
+     POST /api/presets/delete/<name>   → preset-delete-handler
+     POST /api/presets/deploy          → preset-deploy-handler
+
+   Hunchentoot rejects non-standard HTTP verbs (NEW / REWRITE / DEPLOY)
+   at parse time, so the verb lives in the URL where curl and humans
+   can still read it directly."
+  (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
+  (let* ((method (hunchentoot:request-method hunchentoot:*request*))
+         (uri    (hunchentoot:script-name  hunchentoot:*request*)))
+    (multiple-value-bind (verb name) (%preset-path-segments uri)
+      (cond
+        ;; GET /api/presets — list
+        ((and (eq method :get) (null verb))
+         (list-presets-handler))
+        ;; POST mutations
+        ((eq method :post)
+         (cond
+           ((and (equal verb "new")     name) (preset-new-handler     name))
+           ((and (equal verb "rewrite") name) (preset-rewrite-handler name))
+           ((and (equal verb "delete")  name) (preset-delete-handler  name))
+           ((equal verb "deploy")             (preset-deploy-handler))
+           (t (%preset-error-response
+               404
+               (format nil "unknown preset verb: ~a (name=~a)"
+                       verb name)))))
+        (t
+         (%preset-error-response
+          405
+          (format nil "method ~a not allowed on ~a" method uri)))))))

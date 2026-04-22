@@ -13,6 +13,7 @@
                              (:file "pipeline-cp")
                              (:file "business-ui")
                              (:file "presets")
+                             (:file "presets-live")
                              (:file "live-repl")
                              (:file "cp-protocol")
                              (:file "cp-client")

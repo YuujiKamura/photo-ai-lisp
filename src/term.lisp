@@ -313,20 +313,15 @@
             (t (sleep 0.02))))
       (error () nil))))
 
-(defun %agent-picker-command ()
-  "Relative invocation of the platform-appropriate agent picker script.
-   Path is relative to the server's cwd (the repo root when launched via
-   scripts/demo.sh)."
-  (if (uiop:os-windows-p)
-      "scripts\\pick-agent.cmd"
-      "sh scripts/pick-agent.sh"))
-
-(defvar *auto-pick-agent*
-  (not (equal (uiop:getenv "DISABLE_AGENT_PICKER") "1"))
-  "When true, /ws/shell clients get the agent picker auto-injected on
-   connect. Flip to NIL or set DISABLE_AGENT_PICKER=1 to skip.")
-
 ;;; 2b — on connect: spawn child, start stdout pump thread.
+;;;
+;;; Historically we also auto-injected scripts/pick-agent.cmd here to
+;;; let users pick an agent via a "[1] claude [2] gemini [3] codex"
+;;; menu.  That picker layer was removed because it added a cognitive
+;;; round-trip (read menu → decide → type digit → Enter) for no gain:
+;;; the sidebar now ships per-agent launcher buttons that spawn
+;;; directly in one click.  /ws/shell lands at the bare cmd/bash
+;;; prompt and stays there until the user clicks a launcher.
 (defmethod hunchensocket:client-connected ((resource shell-resource)
                                             (client   shell-client))
   (handler-case
@@ -336,34 +331,7 @@
               (bordeaux-threads:make-thread
                (lambda () (%stdout-pump client child))
                :name "shell-stdout-pump"))
-        (%register-shell-client client)
-        ;; Auto-inject the agent picker after the shell banner settles.
-        ;; T2.h pivot: when the demo agent argv override is active, the
-        ;; child IS the agent — don't inject a picker into claude's stdin.
-        (when (and *auto-pick-agent* (not (%demo-agent-argv)))
-          (bordeaux-threads:make-thread
-           (lambda ()
-             (sleep 0.4)
-             (shell-trace-record :meta "[picker-inject:enter]")
-             (handler-case
-                 (let ((stdin (child-process-stdin child))
-                       ;; Single LF only. %normalize-child-input flips it
-                       ;; to CR (one Enter) so cmd runs the batch and set/p
-                       ;; inside pick-agent.cmd keeps blocking for the
-                       ;; user's actual choice. Sending \r\n (= \r\r after
-                       ;; normalize) races ahead and answers set/p with an
-                       ;; empty line before the user can press a digit.
-                       (line  (format nil "~a~c"
-                                      (%agent-picker-command)
-                                      #\Newline)))
-                   (write-sequence (%normalize-child-input line) stdin)
-                   (finish-output stdin)
-                   (shell-trace-record :meta "[picker-inject:wrote]"))
-               (error (e)
-                 (shell-trace-record
-                  :meta (format nil "[picker-inject:ERR ~a ~a]"
-                                (type-of e) e)))))
-           :name "agent-picker-inject")))
+        (%register-shell-client client))
     (error (e)
       (ignore-errors
         (hunchensocket:send-text-message

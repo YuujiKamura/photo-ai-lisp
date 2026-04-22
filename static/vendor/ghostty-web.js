@@ -2855,7 +2855,11 @@ class iA {
    */
   writeInternal(A, Q) {
     var g;
-    this.wasmTerm.write(A), this.processTerminalResponses(), typeof A == "string" && A.includes("\x07") ? this.bellEmitter.fire() : A instanceof Uint8Array && A.includes(7) && this.bellEmitter.fire(), (g = this.linkDetector) == null || g.invalidateCache(), this.viewportY !== 0 && this.scrollToBottom(), typeof A == "string" && A.includes("\x1B]") && this.checkForTitleChange(A), Q && requestAnimationFrame(Q);
+    this.wasmTerm.write(A), this.processTerminalResponses(), typeof A == "string" && A.includes("\x07") ? this.bellEmitter.fire() : A instanceof Uint8Array && A.includes(7) && this.bellEmitter.fire(), (g = this.linkDetector) == null || g.invalidateCache(), /* photo-ai-lisp patch: upstream fires scrollToBottom() on every write
+   when the user has wheeled up (viewportY>0), so the viewport snaps
+   back to the bottom on every agent output frame. Skip it; wasmTerm
+   already places new content into scrollback correctly and users who
+   scroll up want to stay put. */ false, typeof A == "string" && A.includes("\x1B]") && this.checkForTitleChange(A), Q && requestAnimationFrame(Q);
   }
   /**
    * Write data with newline

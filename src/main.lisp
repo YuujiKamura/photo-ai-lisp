@@ -19,9 +19,9 @@
   (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
   (list-masters-handler))
 
-(hunchentoot:define-easy-handler (presets-list-page :uri "/api/presets") ()
-  (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
-  (list-presets-handler))
+;; /api/presets and /api/presets/<name> are routed through the method
+;; dispatcher in presets.lisp (GET / NEW / REWRITE / DELETE / DEPLOY).
+;; The prefix dispatcher is registered in START; no easy-handler here.
 
 (hunchentoot:define-easy-handler (shell-trace-page :uri "/api/shell-trace") ()
   (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
@@ -118,6 +118,10 @@
           (make-instance 'ws-easy-acceptor :port port))
     ;; Prefix dispatcher for /cases/* (GET view + POST input, branched internally)
     (pushnew (hunchentoot:create-prefix-dispatcher "/cases/" '%cases-dispatch-wrapper)
+             hunchentoot:*dispatch-table*)
+    ;; Prefix dispatcher for /api/presets[/<name>] — branches on HTTP method
+    ;; (GET / NEW / REWRITE / DELETE / DEPLOY) inside %presets-dispatch.
+    (pushnew (hunchentoot:create-prefix-dispatcher "/api/presets" '%presets-dispatch)
              hunchentoot:*dispatch-table*)
     ;; Prefix dispatcher for /vendor/ (ghostty-web bundle etc.).
     (pushnew (hunchentoot:create-prefix-dispatcher "/vendor/" 'vendor-handler)

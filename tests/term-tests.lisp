@@ -66,44 +66,10 @@
       (is-true (search "/ws/shell" html)
                "shell-page should connect to /ws/shell"))))
 
-;;; UT2h — agent picker (commit 31b0f1f): auto-inject on /ws/shell connect.
-
-;; %agent-picker-command returns the platform-appropriate script invocation.
-(test term-agent-picker-command-platform
-  (let ((cmd (photo-ai-lisp::%agent-picker-command)))
-    (is-true (stringp cmd)
-             "%agent-picker-command should return a string")
-    (if (uiop:os-windows-p)
-        (is (search "pick-agent.cmd" cmd)
-            "on Windows should invoke pick-agent.cmd")
-        (is (search "pick-agent.sh" cmd)
-            "on non-Windows should invoke pick-agent.sh"))))
-
-;; %agent-picker-command points at a file that actually exists on disk.
-;; Path is relative to the server's cwd (repo root via scripts/demo.sh).
-(test term-agent-picker-script-exists
-  (let* ((cmd  (photo-ai-lisp::%agent-picker-command))
-         (rel  (if (uiop:os-windows-p)
-                   cmd
-                   ;; strip leading "sh " so we can probe the file.
-                   (subseq cmd 3)))
-         (path (merge-pathnames
-                (uiop:parse-unix-namestring
-                 (substitute #\/ #\\ rel))
-                (asdf:system-source-directory :photo-ai-lisp))))
-    (is-true (probe-file path)
-             (format nil "picker script must exist on disk: ~a" path))))
-
-;; *auto-pick-agent* defaults reflect the DISABLE_AGENT_PICKER env var.
-;; Can't clobber the global defvar during tests, so just assert the
-;; invariant: it's boolean, and NIL iff env var is literally "1".
-(test term-auto-pick-agent-default-matches-env
-  (let ((env (uiop:getenv "DISABLE_AGENT_PICKER")))
-    (if (equal env "1")
-        (is-false photo-ai-lisp::*auto-pick-agent*
-                  "DISABLE_AGENT_PICKER=1 should disable auto-pick")
-        (is-true photo-ai-lisp::*auto-pick-agent*
-                 "picker should be enabled when DISABLE_AGENT_PICKER is unset"))))
+;;; (Agent picker / pick-agent.cmd was retired — the sidebar ships
+;;; per-agent launcher buttons that spawn directly, so there's no
+;;; auto-inject on /ws/shell connect anymore.  The UT2h tests that
+;;; pinned %agent-picker-command / *auto-pick-agent* were removed.)
 
 ;;; UT2i — %normalize-child-input: latin-1 scrub + LF->CR for ConPTY.
 ;;; Justified by the conpty-bridge integration test (ConPTY needs CR
