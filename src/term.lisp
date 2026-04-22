@@ -662,7 +662,14 @@ Returns the number of clients closed."
     }
     const onCompStart  = (e) => { showPreedit(e.data || ''); imeReport('start',  e.data); };
     const onCompUpdate = (e) => { showPreedit(e.data || ''); imeReport('update', e.data); };
-    const onCompEnd    = (e) => { hidePreedit();             imeReport('end',    e.data); };
+    const onCompEnd    = (e) => {
+      hidePreedit();
+      // Commit the confirmed text into inputBuffer so subsequent
+      // backspaces / extra ASCII typing extend from the correct
+      // position. Then report the combined buffer as the preview.
+      if (e.data) { inputBuffer += e.data; }
+      reportInput();
+    };
     container.addEventListener('compositionstart',  onCompStart,  true);
     container.addEventListener('compositionupdate', onCompUpdate, true);
     container.addEventListener('compositionend',    onCompEnd,    true);
@@ -735,6 +742,37 @@ Returns the number of clients closed."
     // cascading into an outer handler-bind and closing the WS with
     // 1011 Internal Error. Translate CR -> LF on the wire; cmd.exe
     // accepts LF-terminated input just fine, and the WS stays healthy.
+    // Parent #ime-preview accumulator.
+    //   · ASCII / backspace / Enter: captured via window keydown.
+    //   · IME composition: compositionupdate overrides the preview
+    //     with the preedit text (without touching inputBuffer).
+    //   · compositionend: commits e.data into inputBuffer.
+    // composition* is preferred for the live preedit display because
+    // term.onData never sees the in-flight IME buffer; keydown is
+    // preferred over term.onData for ASCII/backspace because ghostty
+    // may intercept backspace before it hits the onData stream.
+    let inputBuffer = '';
+    function reportInput() {
+      try {
+        window.parent.postMessage(
+          { type: 'ime', kind: 'input', data: inputBuffer }, '*');
+      } catch(_) { /* standalone /shell — no parent, ignore */ }
+    }
+    window.addEventListener('keydown', (e) => {
+      if (e.isComposing) return;            // IME handles preedit itself
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'Backspace') {
+        inputBuffer = inputBuffer.slice(0, -1);
+        reportInput();
+      } else if (e.key === 'Enter') {
+        inputBuffer = '';
+        reportInput();
+      } else if (e.key && e.key.length === 1) {
+        inputBuffer += e.key;
+        reportInput();
+      }
+    });
+
     term.onData((data) => {
       if (ws && ws.readyState !== WebSocket.OPEN) return;
       ws.send(data.replace(/\\r/g, '\\n'));
