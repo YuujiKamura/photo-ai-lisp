@@ -29,35 +29,35 @@
 (defpreset "学習"
   :agent "claude"
   :group nil
-  :input "photo-reference-build スキルで GT (Excel 一覧 + PDF 写真帳) から reference.json を逆生成しろ。
+  :input "~/photo-ai-skills/photo-reference-build/SKILL.md を開いて、その手順で GT (Excel 一覧 + PDF 写真帳) から reference.json を逆生成しろ。
 - ref に出現してマスタに無い語は検索パターン候補としてユーザーに提示して追記の可否を確認しろ
 - GT パス / 既存マスタ / 出力先が不明なら chat で聞け、推測で進めるな")
 
 (defpreset "施工状況"
   :agent "claude"
   :group "解析"
-  :input "写真区分=施工状況 のバイアスで photo-ai-workflow 全段 (scan → keyword-extract → match-master → report-export) を回せ。施工状況以外の区分が混じったら個別に確認しろ。
+  :input "~/photo-ai-skills/photo-ai-workflow/SKILL.md を開け。写真区分=施工状況 のバイアスで全段 (scan → keyword-extract → match-master → report-export) を回せ。施工状況以外の区分が混じったら個別に確認しろ。各段のスキルは ~/photo-ai-skills/photo-{scan,keyword-extract,match-master,report-export}/SKILL.md に個別に置いてある。
 - 対象ディレクトリ / 参照マスタ / 種別 / 出力先が不明なら chat で聞け
 - マスタ未選択なら「マスタ確認 preset で先に」と案内")
 
 (defpreset "出来形管理"
   :agent "claude"
   :group "解析"
-  :input "写真区分=出来形管理 のバイアスで photo-ai-workflow 全段を回せ。寸法/出来形値の写り込みを優先で読み、出来形以外の写真は別群に分離しろ。
+  :input "~/photo-ai-skills/photo-ai-workflow/SKILL.md を開け。写真区分=出来形管理 のバイアスで全段を回せ。寸法/出来形値の写り込みを優先で読み、出来形以外の写真は別群に分離しろ。
 - 対象ディレクトリ / 参照マスタ / 種別 / 出力先が不明なら chat で聞け
 - マスタ未選択なら「マスタ確認 preset で先に」と案内")
 
 (defpreset "品質管理"
   :agent "claude"
   :group "解析"
-  :input "写真区分=品質管理 のバイアスで photo-ai-workflow 全段を回せ。温度管理黒板を検出したら photo-temperature-cycle-resolve で 9 枚サイクルを解決してから match-master 結果を上書きしろ。
+  :input "~/photo-ai-skills/photo-ai-workflow/SKILL.md を開け。写真区分=品質管理 のバイアスで全段を回せ。温度管理黒板を検出したら ~/photo-ai-skills/photo-temperature-cycle-resolve/SKILL.md の手順で 9 枚サイクルを解決してから match-master 結果を上書きしろ。
 - 対象ディレクトリ / 参照マスタ / 種別 / 出力先が不明なら chat で聞け
 - マスタ未選択なら「マスタ確認 preset で先に」と案内")
 
 (defpreset "その他"
   :agent "claude"
   :group "解析"
-  :input "写真区分のバイアスを掛けず photo-ai-workflow 全段 (AI 抽出 + 決定論判定) を回せ。区分は AI 出力と decisive ルールの合議で決めろ。
+  :input "~/photo-ai-skills/photo-ai-workflow/SKILL.md を開け。写真区分のバイアスを掛けず全段 (AI 抽出 + 決定論判定) を回せ。区分は AI 出力と decisive ルールの合議で決めろ。
 - 対象ディレクトリ / 参照マスタ / 種別 / 出力先が不明なら chat で聞け
 - マスタ未選択なら「マスタ確認 preset で先に」と案内")
 
