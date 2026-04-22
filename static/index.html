@@ -172,6 +172,23 @@
     opacity: 0.35; cursor: not-allowed;
   }
   .btn:disabled:hover { border-color: var(--border); }
+  /* Green debug log — what the UI just dispatched (/api/inject,
+     /api/presets/..., /ws/control frames). Helps verify button
+     clicks are actually reaching the server without opening devtools.
+     Revival of the old #resultOutput panel (7fb326d era, #8c8).  */
+  #debug-log {
+    margin-top: 12px;
+    padding: 6px 8px;
+    font: 11px/1.45 'Cascadia Mono', Consolas, monospace;
+    color: #8c8;
+    background: #0f0f0f;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    max-height: 160px; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  #debug-log .t { color: #5a5; }
+  #debug-log .err { color: #f88; }
 </style>
 </head>
 <body>
@@ -197,6 +214,10 @@
     <h2>プリセット</h2>
     <div id="presetList" class="placeholder">(読込中)</div>
   </div>
+  <!-- Debug log. Shows recent /api/inject calls, /ws/control frames,
+       and preset mutations so the user can confirm clicks landed
+       without cracking devtools. -->
+  <div id="debug-log" aria-live="polite"></div>
 </aside>
 
 <section class="terminal">
@@ -271,6 +292,7 @@
       const msg = String(ev.data || '');
       if (msg.startsWith('reload:')) {
         const what = msg.slice('reload:'.length);
+        if (typeof dbgLog === 'function') dbgLog(`ws reload:${what}`);
         if (what === 'term' || what === 'all') {
           // Force the iframe to re-fetch /shell. Same-origin, so the WS
           // to /ws/shell just reconnects and attaches to a fresh PTY.
@@ -323,9 +345,44 @@
   // TODO(#38): replace the setTimeout with a /ws/control "agent-ready"
   // frame once the server emits one, or probe child-stdout for a known
   // ready marker.
+  // ---- green debug log --------------------------------------------
+  //
+  // Tiny ring (20 entries) pinned to the sidebar footer.  Every
+  // injectText / reload frame / agent-state flip leaves a one-line
+  // trail so clicks are auditable without devtools.  Old lines fall
+  // off the top; newest stays visible at the bottom.
+  const DEBUG_LOG_MAX = 20;
+  function dbgLog(msg, kind) {
+    const el = document.getElementById('debug-log');
+    if (!el) return;
+    const line = document.createElement('div');
+    if (kind === 'err') line.className = 'err';
+    const ts = new Date();
+    const hh = String(ts.getHours()).padStart(2, '0');
+    const mm = String(ts.getMinutes()).padStart(2, '0');
+    const ss = String(ts.getSeconds()).padStart(2, '0');
+    const tspan = document.createElement('span');
+    tspan.className = 't';
+    tspan.textContent = `${hh}:${mm}:${ss} `;
+    line.appendChild(tspan);
+    line.appendChild(document.createTextNode(msg));
+    el.appendChild(line);
+    while (el.childElementCount > DEBUG_LOG_MAX) el.removeChild(el.firstChild);
+    el.scrollTop = el.scrollHeight;
+  }
+
   function injectText(text) {
+    // Short preview — newlines and control bytes render as escapes so
+    // the log line stays on a single row.  Truncate to 60 chars so a
+    // multi-KB prompt doesn't blow out the sidebar.
+    const preview = text.replace(/\n/g, '\\n').replace(/\r/g, '\\r').slice(0, 60)
+                    + (text.length > 60 ? '…' : '');
+    dbgLog(`inject ${text.length}B: ${preview}`);
     return fetch('/api/inject?text=' + encodeURIComponent(text))
-      .catch(err => console.error('inject failed', err));
+      .catch(err => {
+        dbgLog(`inject FAILED: ${err.message || err}`, 'err');
+        console.error('inject failed', err);
+      });
   }
 
   // ---- agent-running state (client-side, heuristic) ----------------
@@ -342,9 +399,16 @@
   // cmd prompt.
   let agentRunning = localStorage.getItem('agentRunning') === '1';
   function setAgentRunning(v) {
-    agentRunning = !!v;
-    try { localStorage.setItem('agentRunning', agentRunning ? '1' : '0'); }
-    catch (_) { /* private browsing etc. — fine to ignore */ }
+    const next = !!v;
+    if (next !== agentRunning) {
+      agentRunning = next;
+      try { localStorage.setItem('agentRunning', agentRunning ? '1' : '0'); }
+      catch (_) { /* private browsing etc. — fine to ignore */ }
+      // dbgLog may not be defined at first call on script load; guard.
+      if (typeof dbgLog === 'function') {
+        dbgLog(`agent ${agentRunning ? 'ON' : 'off'}`);
+      }
+    }
     renderAgentIndicator();
     applyAgentGate();
   }

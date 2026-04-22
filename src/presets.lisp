@@ -196,15 +196,19 @@
   :group "起動"
   :argv (list "claude" "--dangerously-skip-permissions"))
 
+;; gemini / codex は UTF-8 出力。cmd.exe のデフォルトコードページが
+;; CP932 (Shift-JIS) のままだと日本語がモジバケするので、chcp 65001
+;; で UTF-8 に切り替えてから起動する。">nul" で切替通知を silence。
+;; claude CLI は自前で console mode を変えるのか不要だったため素のまま。
 (defpreset "gemini"
   :agent "gemini"
   :group "起動"
-  :argv (list "gemini"))
+  :argv (list "chcp" "65001>nul" "&&" "gemini"))
 
 (defpreset "codex"
   :agent "codex"
   :group "起動"
-  :argv (list "codex"))
+  :argv (list "chcp" "65001>nul" "&&" "codex"))
 
 ;; ---- prompt presets (require an agent running) ---------------------
 

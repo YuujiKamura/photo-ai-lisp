@@ -16,13 +16,13 @@
   :input nil)
 
 (defpreset "gemini"
-  :argv (list "gemini")
+  :argv (list "chcp" "65001>nul" "&&" "gemini")
   :agent "gemini"
   :group "起動"
   :input nil)
 
 (defpreset "codex"
-  :argv (list "codex")
+  :argv (list "chcp" "65001>nul" "&&" "codex")
   :agent "codex"
   :group "起動"
   :input nil)
