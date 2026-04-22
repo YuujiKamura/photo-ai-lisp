@@ -161,9 +161,15 @@
   '("学習" "施工状況" "出来形管理" "品質管理" "その他" "マスタ確認" "マスタ棚卸し")
   "Claude-agent prompt presets, in declaration order.")
 
+(defparameter *bundled-export-preset-names*
+  '("写真帳 pdf" "写真帳 excel")
+  "photo-ai-go バイナリを叩く出力系 shell preset。DEFPRESET の key は
+   STRING-DOWNCASE されるので ASCII は小文字で書く。")
+
 (defparameter *bundled-preset-names*
   (append *bundled-launcher-names*
           *bundled-prompt-preset-names*
+          *bundled-export-preset-names*
           '("画面クリア"))
   "All bundled presets in declaration order (menu layout).")
 
@@ -255,20 +261,22 @@
   "JSON group distribution for the bundled layout:
      3 under 起動  (launchers)
      4 under 解析  (analyze prompts)
+     2 under 出力  (photo-ai-go PDF / Excel)
      4 null        (学習 / マスタ確認 / マスタ棚卸し / 画面クリア)"
   (let ((json (photo-ai-lisp::list-presets-handler)))
     (5am:is (= 4 (%count-json-matches json "\"group\":null")))
     (5am:is (= 3 (%count-json-matches json "\"group\":\"起動\"")))
-    (5am:is (= 4 (%count-json-matches json "\"group\":\"解析\"")))))
+    (5am:is (= 4 (%count-json-matches json "\"group\":\"解析\"")))
+    (5am:is (= 2 (%count-json-matches json "\"group\":\"出力\"")))))
 
 (5am:test bundled-presets-emit-agent-key-in-json
   "JSON agent distribution:
      1 claude launcher + 7 claude prompts = 8 agent=\"claude\"
      1 gemini launcher                      = 1 agent=\"gemini\"
      1 codex launcher                       = 1 agent=\"codex\"
-     1 shell teardown (画面クリア)    = 1 agent=null"
+     2 出力 shell + 1 画面クリア shell      = 3 agent=null"
   (let ((json (photo-ai-lisp::list-presets-handler)))
     (5am:is (= 8 (%count-json-matches json "\"agent\":\"claude\"")))
     (5am:is (= 1 (%count-json-matches json "\"agent\":\"gemini\"")))
     (5am:is (= 1 (%count-json-matches json "\"agent\":\"codex\"")))
-    (5am:is (= 1 (%count-json-matches json "\"agent\":null")))))
+    (5am:is (= 3 (%count-json-matches json "\"agent\":null")))))

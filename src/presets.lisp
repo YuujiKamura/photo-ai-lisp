@@ -250,6 +250,28 @@
 5. Markdown テーブル (path | rows | format | header) で 1 枚にまとめ、末尾に期待カラム (写真区分 / 種別) を持たないマスタをギャップとして列挙
 6. ユーザーに「このマスタで進めるか、学習 preset で育てるか」を 1 行で問え")
 
+;; ---- export (photo-ai-go 呼び出し) ----------------------------------
+;; 解析で得た中間 JSON (photo-ai-go の analyze が <folder>/result.json に
+;; 吐く) から PDF / Excel の写真帳を生成する shell preset。バイナリは
+;; 兄弟リポジトリ ~/photo-ai-go/ に置いてある前提。%USERPROFILE% を使う
+;; ことでユーザー名を決め打ちせずに cmd.exe のセッション内で絶対パスに
+;; 解決される (CLAUDE.md の「ハードコードパス禁止 / 動的解決徹底」準拠)。
+;;
+;; 現状 result.json は photo-ai-go 側の analyze が産むフォーマット。
+;; claude 解析群の出力とは直接つながっていないので、claude 解析 →
+;; photo-ai-go で再スキャン、か、photo-ai-go の analyze で一発、
+;; のどちらかでまず result.json を作ってから押す。
+
+(defpreset "写真帳 pdf"
+  :argv (list "%USERPROFILE%\\photo-ai-go\\photo-ai.exe"
+              "export" "pdf" "result.json")
+  :group "出力")
+
+(defpreset "写真帳 excel"
+  :argv (list "%USERPROFILE%\\photo-ai-go\\photo-ai.exe"
+              "export" "excel" "result.json")
+  :group "出力")
+
 ;; ---- screen clear ---------------------------------------------------
 ;; 画面クリア — shell-layer preset (agent=nil).
 ;; /exit は claude のスラッシュコマンドで、claude 実行中ならセッション
