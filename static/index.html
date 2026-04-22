@@ -175,7 +175,6 @@
   /* IME live preview — updates in place on every composition event.
      Single line, just the current e.data, nothing else. */
   #ime-preview {
-    margin-top: 8px;
     padding: 6px 8px;
     font: 13px 'Cascadia Mono', Consolas, monospace;
     color: #8c8;
@@ -213,7 +212,10 @@
   </div>
   <!-- IME preview. Mirrors the current composition data (e.data)
        live. Single line, replaced on every compositionupdate. -->
-  <div id="ime-preview" aria-live="polite"></div>
+  <div>
+    <h2>IME入力</h2>
+    <div id="ime-preview" aria-live="polite"></div>
+  </div>
 </aside>
 
 <section class="terminal">
