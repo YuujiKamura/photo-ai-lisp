@@ -485,15 +485,14 @@
         // (no agent) are always clickable.
         const hasAgent = typeof p.agent === 'string' && p.agent.length > 0;
         const hasArgv  = Array.isArray(p.argv) && p.argv.length > 0;
-        const isLauncher = hasAgent && hasArgv;
-        const isPrompt   = hasAgent && !hasArgv;
-        b.title = isLauncher
-          ? `起動: ${(p.argv || []).join(' ')}`
-          : isPrompt
-            ? `agent: ${p.agent}` + (!agentRunning ? '\n(エージェント未起動のため無効)' : '')
-            : (p.argv || []).join(' ');
+        const isPrompt = hasAgent && !hasArgv;
         b.dataset.agentGated = isPrompt ? '1' : '0';
         if (isPrompt && !agentRunning) b.disabled = true;
+        // No tooltip — the button label is the source of truth and
+        // any dynamic hint (gated/ungated, argv, agent id) goes
+        // stale between refreshPresets ticks, which misleads the
+        // user.  Disabled state alone communicates "not available
+        // right now".
         b.addEventListener('click', () => runPreset(p.name, p.argv, p.input, p.agent));
         const g = (typeof p.group === 'string' && p.group.length > 0) ? p.group : null;
         if (g === null) {
