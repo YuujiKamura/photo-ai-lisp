@@ -490,6 +490,20 @@ Returns the number of clients closed."
     }
     #shell-root { position: relative; width: 100%; height: 100%; }
     #terminal { width: 100%; height: 100%; }
+    /* IME composition debug overlay. Top-right, green monospace so
+       it's visually distinct from terminal content. Shows the raw
+       e.data carried by each compositionstart / update / end event
+       plus UTF-8 byte hex so mojibake / encoding bugs are legible. */
+    #ime-debug {
+      position: absolute; top: 4px; right: 4px; z-index: 10000;
+      pointer-events: none;
+      font: 11px 'Cascadia Mono', Consolas, monospace;
+      color: #8c8; background: rgba(15, 15, 15, 0.85);
+      padding: 4px 6px; border: 1px solid #484;
+      border-radius: 3px; max-width: 60%;
+      white-space: pre; display: none;
+    }
+    #ime-debug.active { display: block; }
     /* Snap the WASM renderer's backing canvas to device pixels so row
        height doesn't drift by a fractional pixel across scrolls. */
     #terminal canvas {
@@ -642,9 +656,34 @@ Returns the number of clients closed."
       preedit.style.display = 'none';
       preedit.innerHTML = '';
     }
-    const onCompStart  = (e) => { showPreedit(e.data || ''); };
-    const onCompUpdate = (e) => { showPreedit(e.data || ''); };
-    const onCompEnd    = ()  => { hidePreedit(); };
+    // IME composition debug overlay — shows each compositionstart /
+    // update / end event's e.data plus UTF-8 byte hex so encoding
+    // regressions are diagnosable without devtools.
+    const imeDebug = document.createElement('div');
+    imeDebug.id = 'ime-debug';
+    document.getElementById('shell-root').appendChild(imeDebug);
+    function imeDebugUpdate(kind, data) {
+      const text = data || '';
+      let hex = '';
+      if (text) {
+        const bytes = new TextEncoder().encode(text);
+        hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(' ');
+      }
+      imeDebug.textContent =
+        `[${kind}] len=${text.length}\\n`
+        + `text: ${text || '(empty)'}\\n`
+        + `utf8: ${hex || '(none)'}`;
+      imeDebug.classList.add('active');
+      if (kind === 'end') {
+        clearTimeout(imeDebug._hideTimer);
+        imeDebug._hideTimer = setTimeout(() => {
+          imeDebug.classList.remove('active');
+        }, 1500);
+      }
+    }
+    const onCompStart  = (e) => { showPreedit(e.data || ''); imeDebugUpdate('start',  e.data); };
+    const onCompUpdate = (e) => { showPreedit(e.data || ''); imeDebugUpdate('update', e.data); };
+    const onCompEnd    = (e) => { hidePreedit();             imeDebugUpdate('end',    e.data); };
     container.addEventListener('compositionstart',  onCompStart,  true);
     container.addEventListener('compositionupdate', onCompUpdate, true);
     container.addEventListener('compositionend',    onCompEnd,    true);
