@@ -189,6 +189,20 @@
   }
   #debug-log .t { color: #5a5; }
   #debug-log .err { color: #f88; }
+  /* IME live line — updates in-place during composition so we don't
+     flood the ring with one entry per keystroke. compositionend
+     releases the slot (drops the .live class) so it falls into the
+     permanent history and the next composition creates a new one. */
+  #debug-log .ime.live {
+    border-left: 2px solid #8c8;
+    padding-left: 4px;
+  }
+  #debug-log .ime .hex {
+    color: #585;
+    font-size: 10px;
+    display: block;
+    word-break: break-all;
+  }
 </style>
 </head>
 <body>
@@ -370,6 +384,46 @@
     while (el.childElementCount > DEBUG_LOG_MAX) el.removeChild(el.firstChild);
     el.scrollTop = el.scrollHeight;
   }
+
+  // IME composition events arrive as postMessage from the /shell
+  // iframe. One "live" line at the bottom of the log updates in
+  // place across start/update; compositionend releases the slot so
+  // the final state becomes permanent history.
+  window.addEventListener('message', (ev) => {
+    const m = ev.data;
+    if (!m || m.type !== 'ime') return;
+    const log = document.getElementById('debug-log');
+    if (!log) return;
+    let live = log.querySelector('.ime.live');
+    if (m.kind === 'start' || !live) {
+      live = document.createElement('div');
+      live.className = 'ime live';
+      log.appendChild(live);
+      while (log.childElementCount > DEBUG_LOG_MAX) log.removeChild(log.firstChild);
+    }
+    live.innerHTML = '';
+    const ts = new Date();
+    const hh = String(ts.getHours()).padStart(2, '0');
+    const mm = String(ts.getMinutes()).padStart(2, '0');
+    const ss = String(ts.getSeconds()).padStart(2, '0');
+    const t = document.createElement('span');
+    t.className = 't';
+    t.textContent = `${hh}:${mm}:${ss} ime/${m.kind} `;
+    live.appendChild(t);
+    live.appendChild(document.createTextNode(m.data || '(empty)'));
+    if (m.utf8) {
+      const hex = document.createElement('span');
+      hex.className = 'hex';
+      hex.textContent = m.utf8;
+      live.appendChild(hex);
+    }
+    log.scrollTop = log.scrollHeight;
+    if (m.kind === 'end') {
+      // Release the in-place slot so subsequent dbgLog / next IME
+      // composition don't overwrite the finalised line.
+      live.classList.remove('live');
+    }
+  });
 
   function injectText(text) {
     // Short preview — newlines and control bytes render as escapes so
