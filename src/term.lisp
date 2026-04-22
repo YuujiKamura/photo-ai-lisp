@@ -584,60 +584,106 @@ Returns the number of clients closed."
       return true;
     });
 
-    // --- IME reposition (issue #36, v2) ---
-    // ghostty-web already owns an internal textarea (terminal.ts:49,
-    // public textarea?: HTMLTextAreaElement) and wires compositionend →
-    // onDataCallback (input-handler.ts:684-699).  The custom #ime-sink
-    // overlay (41becbc) competed with that textarea for focus.
+    // --- IME preedit display (issue #44) ---
     //
-    // Root cause of window-bottom popup: Chrome/TSF sees a 1×1 px element
-    // and falls back to placing the candidate popup at the window bottom.
-    // Fix: during composition, reposition term.textarea to caret pixel
-    // coords and expand it to one cell (renderer.getMetrics()) so TSF
-    // recognises it as a valid text insertion point.  Non-composition: reset
-    // to the ghostty-web default (1×1 top-left) so it stays invisible.
+    // Browser-native inline preedit inside the terminal doesn't work reliably
+    // here: ghostty-web's container div is contenteditable=true so focus lands
+    // on the DIV (not the hidden textarea), and we fought (and lost) a long
+    // battle trying to get the textarea visible at the right pixel position
+    // with readable color, coexist with TSF candidate-window placement, etc.
     //
-    // term.onData path (ASCII + confirmed CJK via compositionend) is
-    // untouched — ws.send is still wired there and delivers input normally.
-    function updateImePos() {
+    // Pragmatic approach: render the preedit ourselves as a plain HTML
+    // element positioned at the caret cell.  We already have cursorX /
+    // cursorY (from ghostty-web's WASM state) — the same coords the main
+    // canvas uses to draw the `> █` block — so our overlay naturally sits on
+    // top of the block cursor.  `term.onData` still delivers the confirmed
+    // text via compositionend → ws.send, so the PTY input path is intact.
+    //
+    // Event listeners are bound on BOTH the container div and the textarea:
+    // whichever element the browser fires composition on (depends on where
+    // focus landed), our handler runs.  Capture phase on container = we run
+    // before ghostty-web's internal handler at vendor L885.
+    const preedit = document.createElement('div');
+    preedit.id = 'ime-preedit';
+    preedit.style.cssText =
+      'position:absolute;z-index:9999;' +
+      'pointer-events:none;' +
+      'font:14px \"Cascadia Mono\",\"Meiryo UI\",Consolas,monospace;' +
+      'color:#d4d4d4;background:#1e1e1e;' +
+      'white-space:pre;' +
+      'display:none;';
+    container.appendChild(preedit);
+    // Return true for characters that should occupy 2 terminal cells
+    // (CJK ideographs, hiragana, katakana, fullwidth forms, emoji).
+    // Approximates Unicode East Asian Width Wide/Fullwidth class.
+    function isWide(cp) {
+      return (
+        (cp >= 0x1100 && cp <= 0x115F) ||   // Hangul Jamo
+        (cp >= 0x2E80 && cp <= 0x303E) ||   // CJK Radicals/Kangxi/punct
+        (cp >= 0x3041 && cp <= 0x33FF) ||   // Hiragana/Katakana/CJK sym
+        (cp >= 0x3400 && cp <= 0x4DBF) ||   // CJK Ext A
+        (cp >= 0x4E00 && cp <= 0x9FFF) ||   // CJK Unified
+        (cp >= 0xA000 && cp <= 0xA4CF) ||   // Yi
+        (cp >= 0xAC00 && cp <= 0xD7A3) ||   // Hangul Syllables
+        (cp >= 0xF900 && cp <= 0xFAFF) ||   // CJK Compat
+        (cp >= 0xFE30 && cp <= 0xFE4F) ||   // CJK Compat Forms
+        (cp >= 0xFF00 && cp <= 0xFF60) ||   // Fullwidth Forms
+        (cp >= 0xFFE0 && cp <= 0xFFE6) ||
+        (cp >= 0x1F300 && cp <= 0x1FAFF)    // Emoji / Symbols & Pictographs
+      );
+    }
+    function updatePreeditPos() {
       try {
-        if (!term.textarea || !term.renderer || !term.buffer || !term.buffer.active) return;
+        if (!term.renderer || !term.buffer || !term.buffer.active) return;
         const m = term.renderer.getMetrics && term.renderer.getMetrics();
         if (!m || !m.width || !m.height) return;
-        const rect = container.getBoundingClientRect();
-        const x = rect.left + term.buffer.active.cursorX * m.width;
-        const y = rect.top  + term.buffer.active.cursorY * m.height;
-        term.textarea.style.left   = x + 'px';
-        term.textarea.style.top    = y + 'px';
-        term.textarea.style.width  = m.width  + 'px';
-        term.textarea.style.height = m.height + 'px';
+        const cX = term.buffer.active.cursorX;
+        const cY = term.buffer.active.cursorY;
+        preedit.style.left = (cX * m.width) + 'px';
+        preedit.style.top  = (cY * m.height) + 'px';
+        preedit.style.height = m.height + 'px';
+        preedit.style.lineHeight = m.height + 'px';
       } catch (_) {}
     }
-    function resetImePos() {
-      try {
-        if (!term.textarea) return;
-        term.textarea.style.left   = '0px';
-        term.textarea.style.top    = '0px';
-        term.textarea.style.width  = '1px';
-        term.textarea.style.height = '1px';
-      } catch (_) {}
+    function showPreedit(text) {
+      const m = term.renderer && term.renderer.getMetrics && term.renderer.getMetrics();
+      const cellW = (m && m.width) || 9;
+      const cellH = (m && m.height) || 15;
+      preedit.innerHTML = '';
+      // Render each code point in its own span with explicit width matching
+      // the terminal cell grid (1 cell for ASCII, 2 cells for fullwidth).
+      // This keeps the preedit aligned with the block cursor spacing.
+      const chars = Array.from(text || '');  // iterate by code point
+      for (const ch of chars) {
+        const cp = ch.codePointAt(0);
+        const span = document.createElement('span');
+        span.style.cssText =
+          'display:inline-block;' +
+          'text-align:center;' +
+          'width:' + ((isWide(cp) ? 2 : 1) * cellW) + 'px;' +
+          'height:' + cellH + 'px;' +
+          'line-height:' + cellH + 'px;' +
+          'border-bottom:1px solid #d4d4d4;';
+        span.textContent = ch;
+        preedit.appendChild(span);
+      }
+      updatePreeditPos();
+      preedit.style.display = text ? 'block' : 'none';
     }
+    function hidePreedit() {
+      preedit.style.display = 'none';
+      preedit.innerHTML = '';
+    }
+    const onCompStart  = (e) => { showPreedit(e.data || ''); };
+    const onCompUpdate = (e) => { showPreedit(e.data || ''); };
+    const onCompEnd    = ()  => { hidePreedit(); };
+    container.addEventListener('compositionstart',  onCompStart,  true);
+    container.addEventListener('compositionupdate', onCompUpdate, true);
+    container.addEventListener('compositionend',    onCompEnd,    true);
     if (term.textarea) {
-      term.textarea.addEventListener('compositionstart', (e) => {
-        updateImePos();
-        try { term.setPreedit(e.data || ''); } catch (_) {}
-      });
-      term.textarea.addEventListener('compositionupdate', (e) => {
-        updateImePos();
-        try { term.setPreedit(e.data || ''); } catch (_) {}
-      });
-      term.textarea.addEventListener('compositionend', () => {
-        resetImePos();
-        try { term.clearPreedit(); } catch (_) {}
-      });
-      // Re-anchor after cursor movement so a subsequent composition starts
-      // at the updated caret position.
-      term.textarea.addEventListener('keyup', () => requestAnimationFrame(updateImePos));
+      term.textarea.addEventListener('compositionstart',  onCompStart);
+      term.textarea.addEventListener('compositionupdate', onCompUpdate);
+      term.textarea.addEventListener('compositionend',    onCompEnd);
     }
 
     // On any pointer-down: delegate focus to ghostty-web's own textarea
