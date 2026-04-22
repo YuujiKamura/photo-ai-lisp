@@ -3,7 +3,7 @@
 
 # photo-ai-lisp
 
-工事写真まわりの作業を 1 画面でまとめて回すためのローカルアプリ。左に工種マスタとよく使うボタン、右にターミナルが並んでいて、ボタンを押すとターミナルへコマンドが流し込まれる。
+工事写真まわりの作業を 1 画面でまとめて回すためのローカルアプリ。左にプリセットボタン、右にターミナルが並んでいて、ボタンを押すとターミナルへコマンドが流し込まれる。
 
 ## 動かすのに要るもの
 
@@ -44,32 +44,73 @@ cd /d %USERPROFILE%\photo-ai-lisp && scripts\demo.cmd
 
 ## 画面の見かた
 
-- **左サイドバー**: 工種マスタ + プリセットボタン
-- **右上**: ガイド / マスタツリー / リザルト / 問診票 のタブ
-- **右下**: ターミナル（ボタンを押すとここにコマンドが流し込まれる）
+- **左サイドバー** — 先頭に `agent on / off` インジケータ、その下にプリセットボタン一覧
+  - `起動` グループ: `claude` / `gemini` / `codex` のランチャー (1 クリックで起動)
+  - `解析` グループ + 単発プロンプト系: claude に初期プロンプトを流し込むボタン（agent off のときは disable）
+  - `画面クリア`: `/exit` + `cls` を送って画面をリセット（常時有効）
+- **右ペイン** — ターミナル 1 本。ボタンを押すとここに直接コマンドが入る。
 
 ボタンを押すたびに裏でプロセスが立ち上がるわけではなく、画面に見えているターミナル 1 本で順番に動くので、何が走っているかは常に目で追える。
 
 ## ボタン（プリセット）の足しかた
 
+### 種類
+
+プリセットは **3 種類**あり、`:argv` と `:agent` の組み合わせで自動的に振り分けられる:
+
+| 種類       | `:argv` | `:agent`  | 挙動                                                             |
+|-----------|---------|-----------|-----------------------------------------------------------------|
+| launcher  | あり     | あり      | argv をそのまま打って agent 起動。`agentRunning=true` に倒す        |
+| prompt    | なし     | あり      | paste + 時差 Enter で input を agent の chat に投入 (agent off は無効)|
+| shell     | あり     | なし      | argv を直接シェルに打つ。`/exit` 始まりなら `agentRunning=false`    |
+
+### ソースで追加
+
 `src/presets.lisp` に 1 つ追記して保存:
 
 ```lisp
+;; claude に投げるプロンプトボタン (prompt type)
 (defpreset "施工状況"
-  :argv  (list "claude" "--dangerously-skip-permissions")
+  :agent "claude"
   :group "解析"
   :input "写真区分=施工状況 のバイアスで photo-ai-workflow 全段を回せ。…")
+
+;; 独自 agent のランチャーを足す場合 (launcher type)
+(defpreset "my-agent"
+  :agent "my-agent"
+  :group "起動"
+  :argv (list "my-agent" "--some-flag"))
 ```
 
-- `:argv` … クリックしたときにターミナルへ流れる 1 行
-- `:input` … その次に続けて送る文字列（省略可）
-- `:group` … サイドバーで束ねる見出し名（省略すると最上段）
-
-書いた順がそのままボタンの並び順。アプリを止めずに変更を反映したいときは、下の URL をアプリ内のターミナルから叩く:
+書いた順がそのままボタンの並び順。アプリを止めずに変更を反映したいときは、アプリ内のターミナルから:
 
 ```
 curl http://localhost:8090/api/reload?module=presets
 ```
+
+### 実行中に API で追加・編集・削除
+
+サーバは live-edit エンドポイントも持っていて、ファイルを触らずに増減できる。エージェントに任せる時もこの口を叩かせる:
+
+```bash
+# 新規追加
+curl -X POST http://localhost:8090/api/presets/new/<name> \
+  -H 'Content-Type: application/json' \
+  --data-binary '{"agent":"claude","input":"..."}'
+
+# 部分更新 (任意フィールドのみ)
+curl -X POST http://localhost:8090/api/presets/rewrite/<name> \
+  -H 'Content-Type: application/json' \
+  --data-binary '{"input":"..."}'
+
+# 削除
+curl -X POST http://localhost:8090/api/presets/delete/<name>
+
+# 現在の状態を src/presets-live.lisp に焼いて永続化
+curl -X POST http://localhost:8090/api/presets/deploy
+```
+
+`deploy` が走るまでの編集は in-memory のみ。`src/presets-live.lisp` は ASDF が `presets.lisp` の後に読み込む overlay なので、deploy 後は再起動しても live 状態が復元される。overlay を捨てれば工場出荷 (`presets.lisp`) に戻る。
 
 ## ライセンス
 
