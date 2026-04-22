@@ -1,4 +1,4 @@
-<img width="1487" height="1189" alt="image" src="https://github.com/user-attachments/assets/8494fde0-bf00-42d3-8493-27e25e263cfa" />
+<img width="1492" height="1064" alt="image" src="https://github.com/user-attachments/assets/39d3214d-636f-4c5f-8a14-cc790a51f204" />
 
 
 # photo-ai-lisp
